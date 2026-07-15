@@ -6,9 +6,10 @@
 
 ```
 network-data/
-├── manager.py        # CLIスクリプト本体
+├── manager.py               # CLIスクリプト本体
+├── houjin_bangou_api.py     # 国税庁 法人番号公表サイトへの照会補助（照会のみ）
 ├── data/
-│   └── network.json  # 保存先データ（初期状態は空）
+│   └── network.json         # 保存先データ（初期状態は空）
 └── README.md
 ```
 
@@ -200,3 +201,42 @@ python manager.py --action validate
 python manager.py --action stats
 python manager.py --action export --output data/network.json
 ```
+
+## データ収集について
+
+食べログやニュース記事の自動スクレイピングは、利用規約上のリスクが高いため
+本プロジェクトでは行いません。以下の方針で、人が確認した情報の登録を補助します。
+
+### 情報源ごとの登録チェックリスト
+
+| 情報源 | 方法 | 登録コマンド例 |
+|---|---|---|
+| 法人番号公表サイト（国税庁） | `houjin_bangou_api.py` で商号照会（公式API・自動照会OK） | 照会結果を確認後、`update_owner`/`update_shop` で手動反映 |
+| ニュース記事 | 自分で記事を読み、URLと概要を `note` に手入力 | `add_owner --note "2026年6月 千葉日報で開店記事あり" --source web --confidence medium` |
+| 食べログ | 自分で確認したページのURLを `tabelog_url` に登録 | `add_shop --tabelog-url "https://tabelog.com/..." --source web --confidence medium` |
+| 商工会・業界団体リスト | 手動入力 | `add_owner --source manual --confidence sure` |
+
+### 法人番号照会（houjin_bangou_api.py）
+
+```bash
+# APIキー（アプリケーションID）は https://www.houjin-bangou.nta.go.jp/webapi/riyou/ から無料で取得
+export HOUJIN_BANGOU_API_KEY="取得したアプリケーションID"
+
+python houjin_bangou_api.py --name "山田商事"
+```
+
+このAPIで取得できるのは商号・法人番号・本店所在地のみで、**代表者名は含まれません**。
+そのため「代表者名から複数企業を自動検出する」機能は実現できません。
+同一代表者が複数の法人を持っていることに気づいた場合は、
+`add_relation --type business` で手動で関連付けてください。
+
+結果は表示されるだけで `network.json` へは自動反映されません。
+内容を目視で確認したうえで `update_owner` / `update_shop` を使って反映してください。
+
+### 個人情報の取り扱いについて
+
+- 登録するオーナー名は、法人の代表者として公開されている情報
+  （登記簿・企業サイト・報道等）の範囲に限定してください
+- 個人のプライベートな情報（自宅住所、個人の連絡先等）は登録しないでください
+- データの利用目的（千葉県内飲食店ネットワークの可視化）以外に使わないでください
+- 本人から削除の申し出があった場合は `delete_owner` で速やかに削除できます

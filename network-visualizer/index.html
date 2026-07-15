@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>飲食店ネットワーク相関図</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="toolbar">
+    <div class="toolbar-group">
+      <button id="zoomOut" title="縮小">－</button>
+      <span id="zoomPercent">100%</span>
+      <button id="zoomIn" title="拡大">＋</button>
+      <button id="fitButton">🔄 フィット</button>
+    </div>
+    <div class="toolbar-group">
+      <label>🏘️ エリア
+        <select id="areaFilter"><option value="全体">全体</option></select>
+      </label>
+      <label>👥 グループ
+        <select id="groupFilter"><option value="全て表示">全て表示</option></select>
+      </label>
+      <label>👁️
+        <select id="visibilityMode">
+          <option value="grayout">グレーアウト</option>
+          <option value="hide">非表示</option>
+        </select>
+      </label>
+    </div>
+    <div class="toolbar-group">
+      <label class="file-button">
+        📂 JSONを開く
+        <input type="file" id="fileInput" accept="application/json">
+      </label>
+      <button id="saveSvg">💾 SVG保存</button>
+      <button id="savePng">💾 PNG保存</button>
+      <button id="guideButton">ℹ️ ガイド</button>
+    </div>
+  </header>
+
+  <main id="canvasWrap">
+    <div id="dropZone">
+      <p>JSONファイルをここにドラッグ&amp;ドロップ、または「JSONを開く」で選択してください。</p>
+      <p class="hint">manager.py --action export_for_html で生成したファイル(nodes/edges形式)に対応しています。</p>
+    </div>
+    <svg id="graph" xmlns="http://www.w3.org/2000/svg">
+      <g id="viewport"></g>
+    </svg>
+    <div id="tooltip" class="hidden"></div>
+  </main>
+
+  <footer id="bottomPanel">
+    <div id="legend">
+      <div class="legend-title">凡例</div>
+      <div class="legend-item"><span class="legend-dot owner"></span>オーナー</div>
+      <div class="legend-item"><span class="legend-dot shop"></span>店舗</div>
+      <div class="legend-item"><span class="legend-line owner_shop"></span>owner_shop</div>
+      <div class="legend-item"><span class="legend-line same_building"></span>same_building</div>
+      <div class="legend-item"><span class="legend-line family"></span>family(破線)</div>
+      <div class="legend-item"><span class="legend-line business"></span>business(太線)</div>
+      <div class="legend-item"><span class="legend-line other"></span>other(点線)</div>
+    </div>
+    <div id="stats">
+      <div class="stats-title">統計</div>
+      <div>オーナー: <span id="statOwners">0</span></div>
+      <div>店舗: <span id="statShops">0</span></div>
+      <div>関係: <span id="statRelations">0</span></div>
+    </div>
+  </footer>
+</div>
+
+<div id="guideModal" class="hidden">
+  <div class="modal-content">
+    <h2>操作ガイド</h2>
+    <ul>
+      <li>マウスホイール: ズーム(カーソル位置基準)</li>
+      <li>ドラッグ: パン(画面移動)</li>
+      <li>ダブルクリック: ノードを中心に拡大表示</li>
+      <li>ノード/線にマウスを乗せる: 詳細情報を表示</li>
+      <li>エリア/グループの絞り込みは上部ツールバーから</li>
+    </ul>
+    <button id="closeGuide">閉じる</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

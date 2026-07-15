@@ -1,0 +1,249 @@
+{
+  "metadata": {
+    "updated_at": "2026-07-15T10:08:31.969080",
+    "area": "Chiba",
+    "version": "1.0"
+  },
+  "nodes": [
+    {
+      "id": "owner_86575258",
+      "label": "山田太郎",
+      "node_type": "owner",
+      "area": "市川",
+      "group": "山田商事",
+      "confidence": "sure"
+    },
+    {
+      "id": "owner_28633986",
+      "label": "鈴木花子",
+      "node_type": "owner",
+      "area": "市川",
+      "group": "山田商事",
+      "confidence": "sure"
+    },
+    {
+      "id": "owner_cc517fe7",
+      "label": "田中一郎",
+      "node_type": "owner",
+      "area": "船橋",
+      "group": "田中フーズ",
+      "confidence": "sure"
+    },
+    {
+      "id": "owner_42f49f08",
+      "label": "佐藤次郎",
+      "node_type": "owner",
+      "area": "船橋",
+      "group": "田中フーズ",
+      "confidence": "sure"
+    },
+    {
+      "id": "owner_5b5b1012",
+      "label": "高橋三郎",
+      "node_type": "owner",
+      "area": "浦安",
+      "group": "高橋グループ",
+      "confidence": "sure"
+    },
+    {
+      "id": "owner_dc9cc531",
+      "label": "伊藤四郎",
+      "node_type": "owner",
+      "area": "浦安",
+      "group": "",
+      "confidence": "sure"
+    },
+    {
+      "id": "owner_b4623637",
+      "label": "渡辺五郎",
+      "node_type": "owner",
+      "area": "松戸",
+      "group": "渡辺商店",
+      "confidence": "sure"
+    },
+    {
+      "id": "owner_7a210029",
+      "label": "中村六郎",
+      "node_type": "owner",
+      "area": "松戸",
+      "group": "",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_41f1b9eb",
+      "label": "ラーメンABC",
+      "node_type": "shop",
+      "genre": "ラーメン",
+      "area": "市川",
+      "group": "山田商事",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_fd90925e",
+      "label": "焼肉やまだ",
+      "node_type": "shop",
+      "genre": "焼肉",
+      "area": "市川",
+      "group": "山田商事",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_0955d66f",
+      "label": "カフェすずき",
+      "node_type": "shop",
+      "genre": "カフェ",
+      "area": "市川",
+      "group": "山田商事",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_869f5674",
+      "label": "居酒屋たなか",
+      "node_type": "shop",
+      "genre": "居酒屋",
+      "area": "船橋",
+      "group": "田中フーズ",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_75fa4a6f",
+      "label": "寿司たなか",
+      "node_type": "shop",
+      "genre": "寿司",
+      "area": "船橋",
+      "group": "田中フーズ",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_068832d1",
+      "label": "イタリアン佐藤",
+      "node_type": "shop",
+      "genre": "イタリアン",
+      "area": "船橋",
+      "group": "田中フーズ",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_4685945c",
+      "label": "焼鳥たかはし",
+      "node_type": "shop",
+      "genre": "焼鳥",
+      "area": "浦安",
+      "group": "高橋グループ",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_feaa6358",
+      "label": "ラーメン伊藤",
+      "node_type": "shop",
+      "genre": "ラーメン",
+      "area": "浦安",
+      "group": "",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_6c53b7c5",
+      "label": "定食わたなべ",
+      "node_type": "shop",
+      "genre": "定食",
+      "area": "松戸",
+      "group": "渡辺商店",
+      "confidence": "sure"
+    },
+    {
+      "id": "shop_e965d7c3",
+      "label": "喫茶なかむら",
+      "node_type": "shop",
+      "genre": "喫茶",
+      "area": "松戸",
+      "group": "",
+      "confidence": "sure"
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "owner_86575258",
+      "to_id": "shop_41f1b9eb",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_86575258",
+      "to_id": "shop_fd90925e",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_28633986",
+      "to_id": "shop_0955d66f",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_cc517fe7",
+      "to_id": "shop_869f5674",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_cc517fe7",
+      "to_id": "shop_75fa4a6f",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_42f49f08",
+      "to_id": "shop_068832d1",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_5b5b1012",
+      "to_id": "shop_4685945c",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_dc9cc531",
+      "to_id": "shop_feaa6358",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_b4623637",
+      "to_id": "shop_6c53b7c5",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_7a210029",
+      "to_id": "shop_e965d7c3",
+      "type": "owner_shop",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_86575258",
+      "to_id": "owner_28633986",
+      "type": "family",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_cc517fe7",
+      "to_id": "owner_42f49f08",
+      "type": "business",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_86575258",
+      "to_id": "owner_cc517fe7",
+      "type": "same_building",
+      "confidence": "sure"
+    },
+    {
+      "from_id": "owner_5b5b1012",
+      "to_id": "owner_dc9cc531",
+      "type": "other",
+      "confidence": "medium"
+    }
+  ]
+}

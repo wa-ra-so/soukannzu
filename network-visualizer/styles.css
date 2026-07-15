@@ -1,0 +1,237 @@
+:root {
+  --bg: #f5f6f8;
+  --panel-bg: #ffffff;
+  --border: #d8dce1;
+  --text: #1f2430;
+  --text-muted: #6b7280;
+  --accent: #2f6fed;
+  --owner-color: #2ea043;
+  --shop-color: #2f6fed;
+  --edge-color: #9aa3af;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --panel-bg: #1d2026;
+    --border: #333844;
+    --text: #e8eaed;
+    --text-muted: #9aa3af;
+    --accent: #5b8def;
+    --owner-color: #3fb950;
+    --shop-color: #5b8def;
+    --edge-color: #5b6270;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+#toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#toolbar button,
+#toolbar select,
+.file-button {
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.file-button {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.file-button input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+#zoomPercent { min-width: 3.5em; text-align: center; display: inline-block; }
+
+#canvasWrap {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#graph {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+#graph.grabbing { cursor: grabbing; }
+
+#dropZone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-muted);
+  border: 2px dashed var(--border);
+  margin: 16px;
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+#dropZone.dragover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#dropZone .hint { font-size: 12px; }
+
+#dropZone.hidden { display: none; }
+
+.node circle {
+  stroke-width: 2;
+  transition: opacity 0.15s ease;
+}
+
+.node.owner circle { fill: var(--owner-color); }
+.node.shop circle { fill: var(--shop-color); }
+
+.node text {
+  font-size: 11px;
+  fill: var(--text);
+  pointer-events: none;
+  user-select: none;
+}
+
+.edge {
+  stroke: var(--edge-color);
+  fill: none;
+  transition: opacity 0.15s ease;
+}
+
+.edge.owner_shop { stroke-width: 1; }
+.edge.same_building { stroke-width: 2; }
+.edge.family { stroke-width: 1.5; stroke-dasharray: 6 4; }
+.edge.business { stroke-width: 3; }
+.edge.other { stroke-width: 1.5; stroke-dasharray: 2 3; }
+
+#tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  max-width: 260px;
+  z-index: 20;
+}
+
+#tooltip.hidden { display: none; }
+
+#bottomPanel {
+  display: flex;
+  gap: 24px;
+  padding: 8px 16px;
+  background: var(--panel-bg);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.legend-title, .stats-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.legend-dot.owner { background: var(--owner-color); }
+.legend-dot.shop { background: var(--shop-color); }
+
+.legend-line {
+  width: 24px;
+  height: 0;
+  border-top: 2px solid var(--edge-color);
+  display: inline-block;
+}
+.legend-line.family { border-top-style: dashed; }
+.legend-line.business { border-top-width: 3px; }
+.legend-line.other { border-top-style: dotted; }
+.legend-line.same_building { border-top-width: 2px; }
+.legend-line.owner_shop { border-top-width: 1px; }
+
+#stats div { margin: 2px 0; }
+
+#guideModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+#guideModal.hidden { display: none; }
+
+.modal-content {
+  background: var(--panel-bg);
+  border-radius: 10px;
+  padding: 20px 24px;
+  max-width: 360px;
+  border: 1px solid var(--border);
+}
+
+.modal-content ul { padding-left: 18px; }
+.modal-content li { margin: 6px 0; }
+
+.hidden { display: none !important; }
