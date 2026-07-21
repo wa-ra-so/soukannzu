@@ -85,6 +85,11 @@
   // 関係をつなぐモード
   let connectMode = false;
   let connectFromId = null;
+  let connectDragActive = false;
+  let connectDragMoved = false;
+  let connectDragWasFresh = false;
+  let connectDragStart = { x: 0, y: 0 };
+  let connectDragLine = null;
 
   function hasEditorBridge() {
     return !!window.NetworkEditor;
@@ -316,7 +321,8 @@
       g.addEventListener('mouseleave', hideTooltip);
 
       g.addEventListener('mousedown', ev => {
-        if (ev.button !== 0 || connectMode) return;
+        if (ev.button !== 0) return;
+        if (connectMode) { ev.stopPropagation(); return; }
         ev.stopPropagation();
         draggingNode = n;
         nodeDragMoved = false;
@@ -325,12 +331,17 @@
         g.classList.add('dragging');
       });
 
+      g.addEventListener('pointerdown', ev => {
+        if (!connectMode) return;
+        if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        startConnectDrag(n, ev);
+      });
+
       g.addEventListener('click', ev => {
         ev.stopPropagation();
-        if (connectMode) {
-          handleConnectClick(n);
-          return;
-        }
+        if (connectMode) return; // 関係をつなぐモードの操作はpointerdown/upで完結する
         if (nodeDragMoved) { nodeDragMoved = false; return; }
         selectNode(n);
       });
@@ -825,38 +836,105 @@
   });
 
   // ------------------------------------------------------------------
-  // 関係をつなぐモード（ノードを2つクリックして新規関係を作成）
+  // 関係をつなぐモード（ノードを2つクリック、またはノード間をドラッグして新規関係を作成）
   // ------------------------------------------------------------------
   function setConnectMode(on) {
     connectMode = on;
     connectFromId = null;
     connectModeBtn.classList.toggle('active', connectMode);
     nodeElements.forEach(g => g.classList.remove('connect-from'));
+    cancelConnectDrag();
     if (connectMode) clearSelection();
   }
 
   connectModeBtn.addEventListener('click', () => setConnectMode(!connectMode));
 
-  function handleConnectClick(n) {
+  function clientToGraph(clientX, clientY) {
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - camera.x) / camera.scale,
+      y: (clientY - rect.top - camera.y) / camera.scale,
+    };
+  }
+
+  function nodeIdAtPoint(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    const g = el && el.closest ? el.closest('.node') : null;
+    if (!g || !g.id.startsWith('node_')) return null;
+    return g.id.slice('node_'.length);
+  }
+
+  function startConnectDrag(n, ev) {
+    connectDragActive = true;
+    connectDragMoved = false;
+    connectDragStart = { x: ev.clientX, y: ev.clientY };
+    connectDragWasFresh = !connectFromId;
     if (!connectFromId) {
       connectFromId = n.id;
       const g = nodeElements.get(n.id);
       if (g) g.classList.add('connect-from');
-      return;
     }
-    if (connectFromId === n.id) {
-      const g = nodeElements.get(n.id);
+    const origin = state.nodeById.get(connectFromId) || n;
+    connectDragLine = document.createElementNS(SVG_NS, 'line');
+    connectDragLine.setAttribute('class', 'connect-drag-line');
+    connectDragLine.setAttribute('x1', origin.x);
+    connectDragLine.setAttribute('y1', origin.y);
+    connectDragLine.setAttribute('x2', origin.x);
+    connectDragLine.setAttribute('y2', origin.y);
+    viewport.appendChild(connectDragLine);
+  }
+
+  function updateConnectDrag(ev) {
+    if (!connectDragActive) return;
+    const dx = ev.clientX - connectDragStart.x;
+    const dy = ev.clientY - connectDragStart.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) connectDragMoved = true;
+    if (!connectDragLine) return;
+    const pt = clientToGraph(ev.clientX, ev.clientY);
+    connectDragLine.setAttribute('x2', pt.x);
+    connectDragLine.setAttribute('y2', pt.y);
+  }
+
+  // ノードを1回タップして起点を選び、別ノードへドラッグ（または続けてタップ）すると関係が作成される。
+  // 起点ノードを再タップすると選択解除。
+  function finishConnectDrag(ev) {
+    if (!connectDragActive) return;
+    connectDragActive = false;
+    if (connectDragLine) { connectDragLine.remove(); connectDragLine = null; }
+    const fromId = connectFromId;
+    const wasFresh = connectDragWasFresh;
+    if (!fromId) return;
+    const toId = nodeIdAtPoint(ev.clientX, ev.clientY);
+
+    if (toId === fromId) {
+      if (wasFresh) return; // 起点を選んだだけ。ハイライトを維持して次の操作を待つ
+      const g = nodeElements.get(fromId);
       if (g) g.classList.remove('connect-from');
       connectFromId = null;
       return;
     }
-    const fromId = connectFromId;
-    const toId = n.id;
-    const fromG = nodeElements.get(fromId);
-    if (fromG) fromG.classList.remove('connect-from');
+    if (!toId) {
+      if (connectDragMoved) {
+        const g = nodeElements.get(fromId);
+        if (g) g.classList.remove('connect-from');
+        connectFromId = null;
+      }
+      return;
+    }
+    const g = nodeElements.get(fromId);
+    if (g) g.classList.remove('connect-from');
     connectFromId = null;
     openCreateRelationModal(fromId, toId);
   }
+
+  function cancelConnectDrag() {
+    if (connectDragLine) { connectDragLine.remove(); connectDragLine = null; }
+    connectDragActive = false;
+    connectDragMoved = false;
+  }
+
+  window.addEventListener('pointermove', updateConnectDrag);
+  window.addEventListener('pointerup', finishConnectDrag);
 
   function openCreateRelationModal(fromId, toId) {
     const fromNode = state.nodeById.get(fromId);
@@ -909,6 +987,7 @@
 
   document.addEventListener('keydown', ev => {
     if (ev.key !== 'Escape') return;
+    cancelConnectDrag();
     if (connectFromId) {
       const g = nodeElements.get(connectFromId);
       if (g) g.classList.remove('connect-from');

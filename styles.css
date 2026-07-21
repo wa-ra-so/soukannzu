@@ -735,6 +735,7 @@ width: 100%;
   height: 100%;
   display: block;
   cursor: grab;
+  touch-action: none;
 }
 
 #view-visualizer #viz-graph.grabbing {
@@ -1054,6 +1055,8 @@ position: fixed;
   align-items: center;
   justify-content: center;
   z-index: 50;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 #view-visualizer #viz-guideModal.hidden {
@@ -1064,7 +1067,10 @@ display: none;
 background: var(--panel-bg);
   border-radius: 10px;
   padding: 20px 24px;
-  max-width: 380px;
+  max-width: min(380px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-sizing: border-box;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
 }
@@ -1106,6 +1112,13 @@ display: none;
   stroke: var(--accent);
   stroke-width: 3;
   stroke-dasharray: 3 2;
+}
+
+#view-visualizer .connect-drag-line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
 }
 
 #view-visualizer #viz-connectMode.active {
@@ -1159,6 +1172,24 @@ display: none;
 }
 #view-visualizer .inline-edit-error.hidden { display: none; }
 
+#view-visualizer #viz-relationModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 16px;
+  box-sizing: border-box;
+}
+#view-visualizer #viz-relationModal.hidden { display: none; }
+#view-visualizer #viz-relationModal .modal-content {
+  max-width: min(380px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
 #view-visualizer #viz-relationModal .field {
   margin-bottom: 10px;
   display: flex;
