@@ -1,9 +1,38 @@
-// 飲食店ネットワーク相関図 - ズーム対応表示ツール
-// 入力データは manager.py --action export_for_html が出力する
-// { metadata, nodes: [{id,label,node_type,area,group,genre,confidence}],
-//   edges: [{from_id,to_id,type,confidence}] } 形式を前提とする。
+// 飲食店ネットワーク相関図 - 自由配置(位置は永続化)の相関図表示・編集ツール
+// 入力データは manager.py --action export_for_html 相当の
+// { metadata, nodes: [{id,label,node_type,area,group,genre,confidence,pos_x,pos_y}],
+//   edges: [{id?,from_id,to_id,type,confidence,note}] } 形式を前提とする。
+// ノードの位置(pos_x/pos_y)はデータの一部として永続化され、再読み込みしても変わらない。
+// エリア・グループごとに背景ボックスを自動追従で描画する（エリア＞グループの入れ子）。
 
 (() => {
+  const RELATION_TYPES = ['same_building', 'family', 'business', 'other'];
+  const SOURCE_OPTIONS = ['manual', 'web', 'lcdb'];
+  const CONFIDENCE_OPTIONS = ['sure', 'medium', 'low'];
+
+  const NODE_FIELD_SPECS = {
+    owner: [
+      { key: 'name', label: '名前', type: 'text', required: true },
+      { key: 'area', label: 'エリア', type: 'text', required: true },
+      { key: 'group', label: 'グループ', type: 'text' },
+      { key: 'note', label: 'メモ', type: 'textarea' },
+      { key: 'node_size', label: '相関図での円の大きさ', type: 'number', min: 0.5, max: 3, step: 0.1, default: 1 },
+      { key: 'source', label: 'ソース', type: 'select', options: SOURCE_OPTIONS },
+      { key: 'confidence', label: '信頼度', type: 'select', options: CONFIDENCE_OPTIONS },
+    ],
+    shop: [
+      { key: 'name', label: '名前', type: 'text', required: true },
+      { key: 'genre', label: 'ジャンル', type: 'text' },
+      { key: 'area', label: 'エリア', type: 'text', required: true },
+      { key: 'group', label: 'グループ', type: 'text' },
+      { key: 'address', label: '住所', type: 'text' },
+      { key: 'tabelog_url', label: '食べログURL', type: 'text' },
+      { key: 'salesforce_url', label: 'SalesforceURL', type: 'text' },
+      { key: 'source', label: 'ソース', type: 'select', options: SOURCE_OPTIONS },
+      { key: 'confidence', label: '信頼度', type: 'select', options: CONFIDENCE_OPTIONS },
+    ],
+  };
+
   const svg = document.getElementById('viz-graph');
   const viewport = document.getElementById('viz-viewport');
   const dropZone = document.getElementById('viz-dropZone');
@@ -19,10 +48,15 @@
   const searchBox = document.getElementById('viz-searchBox');
   const searchResults = document.getElementById('viz-searchResults');
   const selectionPanel = document.getElementById('viz-selectionPanel');
+  const selectionTitle = document.getElementById('viz-selectionTitle');
   const selectionDetail = document.getElementById('viz-selectionDetail');
   const selectionNeighbors = document.getElementById('viz-selectionNeighbors');
+  const neighborsSection = document.getElementById('viz-neighborsSection');
   const canvasWrap = document.getElementById('viz-canvasWrap');
+  const connectModeBtn = document.getElementById('viz-connectMode');
+  const relationModal = document.getElementById('viz-relationModal');
 
+  let regionsGroup = null;
   let edgesGroup = null;
   let nodesGroup = null;
 
@@ -31,6 +65,9 @@
   const nodeElements = new Map();
   const edgeElements = new Map();
   let selectedNodeId = null;
+  let selectedRelationId = null;
+  let editingNodeId = null;
+  let editingRelationId = null;
 
   // パン(背景ドラッグ)の状態
   let isPanning = false;
@@ -45,9 +82,98 @@
   let nodeStartPos = { x: 0, y: 0 };
   let nodeDragMoved = false;
 
+  // 関係をつなぐモード
+  let connectMode = false;
+  let connectFromId = null;
+
+  function hasEditorBridge() {
+    return !!window.NetworkEditor;
+  }
+
   // ------------------------------------------------------------------
-  // データ読み込み
+  // データ読み込み・自由配置（新規ノードはグループ単位でクラスタ配置）
   // ------------------------------------------------------------------
+  function hashHue(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    return hash % 360;
+  }
+
+  function localSpiralOffset(index) {
+    if (index === 0) return { x: 0, y: 0 };
+    const LOCAL_SPACING = 85;
+    let ring = 1;
+    let count = 6;
+    let idx = index - 1;
+    while (idx >= count) {
+      idx -= count;
+      ring++;
+      count = 6 * ring;
+    }
+    const angle = (idx / count) * Math.PI * 2;
+    return { x: Math.cos(angle) * LOCAL_SPACING * ring, y: Math.sin(angle) * LOCAL_SPACING * ring };
+  }
+
+  function assignPositions(nodes) {
+    const CLUSTER_SPACING_X = 420;
+    const CLUSTER_SPACING_Y = 320;
+    const groupKeyOf = n => (n.group || '') + '|' + (n.area || '');
+
+    const existingPositions = nodes.filter(n => Number.isFinite(n.pos_x) && Number.isFinite(n.pos_y));
+    const usedClusterCells = new Set();
+    existingPositions.forEach(n => {
+      const cx = Math.round(n.pos_x / CLUSTER_SPACING_X);
+      const cy = Math.round(n.pos_y / CLUSTER_SPACING_Y);
+      usedClusterCells.add(cx + ',' + cy);
+    });
+
+    function nextClusterCell() {
+      for (let radius = 0; radius < 500; radius++) {
+        for (let gy = -radius; gy <= radius; gy++) {
+          for (let gx = -radius; gx <= radius; gx++) {
+            if (Math.max(Math.abs(gx), Math.abs(gy)) !== radius) continue;
+            const key = gx + ',' + gy;
+            if (!usedClusterCells.has(key)) { usedClusterCells.add(key); return { gx, gy }; }
+          }
+        }
+      }
+      return { gx: 0, gy: 0 };
+    }
+
+    const groupCenters = new Map();
+    const groupLocalCount = new Map();
+
+    nodes.forEach(n => {
+      if (Number.isFinite(n.pos_x) && Number.isFinite(n.pos_y)) {
+        n.x = n.pos_x;
+        n.y = n.pos_y;
+        return;
+      }
+      const key = groupKeyOf(n);
+      if (!groupCenters.has(key)) {
+        const existingSame = existingPositions.filter(m => groupKeyOf(m) === key);
+        if (existingSame.length) {
+          const cx = existingSame.reduce((s, m) => s + m.pos_x, 0) / existingSame.length;
+          const cy = existingSame.reduce((s, m) => s + m.pos_y, 0) / existingSame.length;
+          groupCenters.set(key, { x: cx, y: cy });
+        } else {
+          const { gx, gy } = nextClusterCell();
+          groupCenters.set(key, { x: gx * CLUSTER_SPACING_X, y: gy * CLUSTER_SPACING_Y });
+        }
+        groupLocalCount.set(key, 0);
+      }
+      const center = groupCenters.get(key);
+      const idx = groupLocalCount.get(key);
+      groupLocalCount.set(key, idx + 1);
+      const offset = localSpiralOffset(idx);
+      n.pos_x = center.x + offset.x;
+      n.pos_y = center.y + offset.y;
+      n.x = n.pos_x;
+      n.y = n.pos_y;
+      if (hasEditorBridge()) window.NetworkEditor.setNodePosition(n.id, n.pos_x, n.pos_y);
+    });
+  }
+
   function loadFromObject(parsed) {
     if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
       alert('export_for_html 形式のJSONを指定してください（nodes / edges が必要です）');
@@ -58,13 +184,12 @@
       e => parsed.nodes.some(n => n.id === e.from_id) && parsed.nodes.some(n => n.id === e.to_id)
     );
     state.nodeById = new Map(state.nodes.map(n => [n.id, n]));
-    selectedNodeId = null;
 
     dropZone.classList.toggle('hidden', state.nodes.length > 0);
-    simulateLayout(state.nodes, state.edges);
+    assignPositions(state.nodes);
     populateFilters();
     render();
-    fitView(false);
+    if (!selectedNodeId && !selectedRelationId) fitView(false);
   }
 
   function loadFile(file) {
@@ -97,79 +222,6 @@
   });
 
   // ------------------------------------------------------------------
-  // レイアウト（簡易 Fruchterman-Reingold + 中心引力）
-  // ------------------------------------------------------------------
-  function simulateLayout(nodes, edges) {
-    const width = 1200;
-    const height = 800;
-    if (nodes.length === 0) return;
-
-    const area = width * height;
-    const k = Math.sqrt(area / nodes.length) * 0.9;
-    const iterations = nodes.length > 500 ? 30 : 300;
-    const idToIndex = new Map(nodes.map((n, i) => [n.id, i]));
-
-    nodes.forEach(n => {
-      n.x = Math.random() * width;
-      n.y = Math.random() * height;
-    });
-
-    let temperature = width / 10;
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    for (let iter = 0; iter < iterations; iter++) {
-      const disp = nodes.map(() => ({ x: 0, y: 0 }));
-
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x;
-          const dy = nodes[i].y - nodes[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-          const force = (k * k) / dist;
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-          disp[i].x += fx; disp[i].y += fy;
-          disp[j].x -= fx; disp[j].y -= fy;
-        }
-      }
-
-      edges.forEach(e => {
-        const i = idToIndex.get(e.from_id);
-        const j = idToIndex.get(e.to_id);
-        if (i === undefined || j === undefined) return;
-        const dx = nodes[i].x - nodes[j].x;
-        const dy = nodes[i].y - nodes[j].y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const force = (dist * dist) / k;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        disp[i].x -= fx; disp[i].y -= fy;
-        disp[j].x += fx; disp[j].y += fy;
-      });
-
-      // 中心への弱い引力（鎖状に伸びたり孤立成分が飛び散るのを防ぐ）
-      for (let i = 0; i < nodes.length; i++) {
-        disp[i].x += (centerX - nodes[i].x) * 0.008;
-        disp[i].y += (centerY - nodes[i].y) * 0.008;
-      }
-
-      for (let i = 0; i < nodes.length; i++) {
-        const dx = disp[i].x;
-        const dy = disp[i].y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const capped = Math.min(dist, temperature);
-        nodes[i].x += (dx / dist) * capped;
-        nodes[i].y += (dy / dist) * capped;
-        nodes[i].x = Math.min(width, Math.max(0, nodes[i].x));
-        nodes[i].y = Math.min(height, Math.max(0, nodes[i].y));
-      }
-
-      temperature *= 0.97;
-    }
-  }
-
-  // ------------------------------------------------------------------
   // 描画
   // ------------------------------------------------------------------
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -183,10 +235,13 @@
     nodeElements.clear();
     edgeElements.clear();
 
+    regionsGroup = document.createElementNS(SVG_NS, 'g');
+    regionsGroup.setAttribute('id', 'regions');
     edgesGroup = document.createElementNS(SVG_NS, 'g');
     edgesGroup.setAttribute('id', 'edges');
     nodesGroup = document.createElementNS(SVG_NS, 'g');
     nodesGroup.setAttribute('id', 'nodes');
+    viewport.appendChild(regionsGroup);
     viewport.appendChild(edgesGroup);
     viewport.appendChild(nodesGroup);
 
@@ -195,14 +250,19 @@
       const to = state.nodeById.get(e.to_id);
       if (!from || !to) return;
       const line = document.createElementNS(SVG_NS, 'line');
-      line.setAttribute('class', `edge ${e.type}`);
+      line.setAttribute('class', `edge ${e.type}${e.id ? ' selectable' : ''}`);
       line.setAttribute('x1', from.x);
       line.setAttribute('y1', from.y);
       line.setAttribute('x2', to.x);
       line.setAttribute('y2', to.y);
-      line.addEventListener('mouseenter', ev => showTooltip(ev, `関係: ${e.type}\n信頼度: ${e.confidence || '-'}`));
+      line.addEventListener('mouseenter', ev => showTooltip(ev, `関係: ${e.type}\n信頼度: ${e.confidence || '-'}${e.id ? '\n（クリックで編集）' : ''}`));
       line.addEventListener('mousemove', moveTooltip);
       line.addEventListener('mouseleave', hideTooltip);
+      line.addEventListener('click', ev => {
+        ev.stopPropagation();
+        if (connectMode || !e.id) return;
+        selectRelation(e);
+      });
       edgesGroup.appendChild(line);
       edgeElements.set(edgeKey(e), line);
     });
@@ -213,18 +273,21 @@
       g.setAttribute('id', `node_${n.id}`);
       g.setAttribute('transform', `translate(${n.x}, ${n.y})`);
 
+      const nodeSize = n.node_type === 'owner' && Number.isFinite(n.node_size) ? n.node_size : 1;
+      const radius = (n.node_type === 'owner' ? 10 : 7) * nodeSize;
+
       const hitArea = document.createElementNS(SVG_NS, 'circle');
-      hitArea.setAttribute('r', 16);
+      hitArea.setAttribute('r', Math.max(16, radius + 6));
       hitArea.setAttribute('fill', 'transparent');
       hitArea.setAttribute('class', 'hit-area');
       g.appendChild(hitArea);
 
       const circle = document.createElementNS(SVG_NS, 'circle');
-      circle.setAttribute('r', n.node_type === 'owner' ? 10 : 7);
+      circle.setAttribute('r', radius);
       g.appendChild(circle);
 
       const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('x', n.node_type === 'owner' ? 13 : 10);
+      text.setAttribute('x', radius + 3);
       text.setAttribute('y', 4);
       text.textContent = n.label;
       g.appendChild(text);
@@ -253,7 +316,7 @@
       g.addEventListener('mouseleave', hideTooltip);
 
       g.addEventListener('mousedown', ev => {
-        if (ev.button !== 0) return;
+        if (ev.button !== 0 || connectMode) return;
         ev.stopPropagation();
         draggingNode = n;
         nodeDragMoved = false;
@@ -264,24 +327,33 @@
 
       g.addEventListener('click', ev => {
         ev.stopPropagation();
+        if (connectMode) {
+          handleConnectClick(n);
+          return;
+        }
         if (nodeDragMoved) { nodeDragMoved = false; return; }
         selectNode(n);
       });
 
       g.addEventListener('dblclick', ev => {
         ev.stopPropagation();
+        if (connectMode) return;
         centerOnNode(n);
       });
 
-      if (n.pinned) g.classList.add('pinned');
+      if (n.id === connectFromId) g.classList.add('connect-from');
       nodeElements.set(n.id, g);
     });
 
     applyFilters();
+    renderRegionBoxes();
     updateStats();
     if (selectedNodeId) {
       const n = state.nodeById.get(selectedNodeId);
-      if (n) renderSelectionHighlight(); else clearSelection();
+      if (n) renderSelectionHighlight('node', selectedNodeId); else clearSelection();
+    } else if (selectedRelationId) {
+      const e = state.edges.find(edge => edge.id === selectedRelationId);
+      if (e) renderSelectionHighlight('relation', e); else clearSelection();
     }
   }
 
@@ -296,6 +368,92 @@
       el.setAttribute('y1', from.y);
       el.setAttribute('x2', to.x);
       el.setAttribute('y2', to.y);
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // グループ背景ボックス（自動追従・エリア＞グループの入れ子）
+  // ------------------------------------------------------------------
+  function drawRegionRect({ x1, y1, x2, y2, fill, stroke, label, labelColor }) {
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('x', x1);
+    rect.setAttribute('y', y1);
+    rect.setAttribute('width', Math.max(x2 - x1, 1));
+    rect.setAttribute('height', Math.max(y2 - y1, 1));
+    rect.setAttribute('rx', 16);
+    rect.setAttribute('fill', fill);
+    rect.setAttribute('stroke', stroke);
+    rect.setAttribute('stroke-width', 1.5);
+    rect.setAttribute('class', 'region-box');
+    regionsGroup.appendChild(rect);
+
+    if (label) {
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('x', x1 + 12);
+      text.setAttribute('y', y1 + 20);
+      text.setAttribute('class', 'region-label');
+      text.setAttribute('fill', labelColor);
+      text.textContent = label;
+      regionsGroup.appendChild(text);
+    }
+  }
+
+  function renderRegionBoxes() {
+    if (!regionsGroup) return;
+    regionsGroup.innerHTML = '';
+    const overview = areaFilterSelect.value === '全体';
+    const visibleNodes = state.nodes.filter(isNodeVisible);
+
+    const byArea = new Map();
+    visibleNodes.forEach(n => {
+      const area = n.area || '';
+      if (!area) return;
+      if (!byArea.has(area)) byArea.set(area, []);
+      byArea.get(area).push(n);
+    });
+
+    const showAreaBoxes = overview && byArea.size > 1;
+    const AREA_PAD = 55;
+    const GROUP_PAD = 30;
+
+    byArea.forEach((nodesInArea, area) => {
+      const areaHue = hashHue(area);
+
+      if (showAreaBoxes) {
+        const xs = nodesInArea.map(n => n.x);
+        const ys = nodesInArea.map(n => n.y);
+        drawRegionRect({
+          x1: Math.min(...xs) - AREA_PAD, y1: Math.min(...ys) - AREA_PAD,
+          x2: Math.max(...xs) + AREA_PAD, y2: Math.max(...ys) + AREA_PAD - 10,
+          fill: `hsla(${areaHue}, 55%, 55%, 0.10)`,
+          stroke: `hsla(${areaHue}, 55%, 40%, 0.35)`,
+          label: area,
+          labelColor: `hsl(${areaHue}, 55%, 32%)`,
+        });
+      }
+
+      const byGroup = new Map();
+      nodesInArea.forEach(n => {
+        const group = n.group || '';
+        if (!group) return;
+        if (!byGroup.has(group)) byGroup.set(group, []);
+        byGroup.get(group).push(n);
+      });
+
+      byGroup.forEach((nodesInGroup, group) => {
+        if (nodesInGroup.length < 2) return;
+        const groupHue = overview ? areaHue + ((hashHue(group) % 50) - 25) : hashHue(group);
+        const gxs = nodesInGroup.map(n => n.x);
+        const gys = nodesInGroup.map(n => n.y);
+        drawRegionRect({
+          x1: Math.min(...gxs) - GROUP_PAD, y1: Math.min(...gys) - GROUP_PAD,
+          x2: Math.max(...gxs) + GROUP_PAD, y2: Math.max(...gys) + GROUP_PAD - 12,
+          fill: `hsla(${groupHue}, 60%, 50%, 0.20)`,
+          stroke: `hsla(${groupHue}, 60%, 35%, 0.55)`,
+          label: group,
+          labelColor: `hsl(${groupHue}, 60%, 28%)`,
+        });
+      });
     });
   }
 
@@ -321,39 +479,67 @@
   }
 
   // ------------------------------------------------------------------
-  // 選択・つながりハイライト
+  // 選択・つながりハイライト（ノード／関係共通）
   // ------------------------------------------------------------------
   function getNeighborEdges(nodeId) {
     return state.edges.filter(e => e.from_id === nodeId || e.to_id === nodeId);
   }
 
+  function isSafeUrl(url) {
+    return /^https?:\/\//i.test(url || '');
+  }
+
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
   function selectNode(n) {
     selectedNodeId = n.id;
-    renderSelectionHighlight();
-    renderSelectionPanel(n);
+    selectedRelationId = null;
+    editingNodeId = null;
+    editingRelationId = null;
+    renderSelectionHighlight('node', n.id);
+    renderNodePanel(n);
+  }
+
+  function selectRelation(e) {
+    selectedNodeId = null;
+    selectedRelationId = e.id;
+    editingNodeId = null;
+    editingRelationId = null;
+    renderSelectionHighlight('relation', e);
+    renderRelationPanel(e);
   }
 
   function clearSelection() {
     selectedNodeId = null;
+    selectedRelationId = null;
+    editingNodeId = null;
+    editingRelationId = null;
     nodeElements.forEach(g => g.classList.remove('selected'));
     edgeElements.forEach(el => el.classList.remove('emphasized'));
     selectionPanel.classList.add('hidden');
     applyFilters();
   }
 
-  function renderSelectionHighlight() {
-    if (!selectedNodeId) return;
-    const neighborIds = new Set([selectedNodeId]);
-    getNeighborEdges(selectedNodeId).forEach(e => {
-      neighborIds.add(e.from_id);
-      neighborIds.add(e.to_id);
-    });
+  function renderSelectionHighlight(kind, target) {
+    let egoIds;
+    let emphasizedEdgeId = null;
+    if (kind === 'node') {
+      egoIds = new Set([target]);
+      getNeighborEdges(target).forEach(e => { egoIds.add(e.from_id); egoIds.add(e.to_id); });
+    } else {
+      egoIds = new Set([target.from_id, target.to_id]);
+      emphasizedEdgeId = target.id;
+    }
 
     state.nodes.forEach(n => {
       const g = nodeElements.get(n.id);
       if (!g) return;
-      g.classList.toggle('selected', n.id === selectedNodeId);
-      const inEgo = neighborIds.has(n.id);
+      g.classList.toggle('selected', kind === 'node' && n.id === target);
+      const inEgo = egoIds.has(n.id);
       g.style.opacity = inEgo ? '1' : '0.15';
       g.style.display = '';
     });
@@ -361,19 +547,24 @@
     state.edges.forEach(e => {
       const el = edgeElements.get(edgeKey(e));
       if (!el) return;
-      const touches = e.from_id === selectedNodeId || e.to_id === selectedNodeId;
+      const touches = kind === 'node'
+        ? (e.from_id === target || e.to_id === target)
+        : e.id === emphasizedEdgeId;
       el.classList.toggle('emphasized', touches);
       el.style.opacity = touches ? '1' : '0.06';
       el.style.display = '';
     });
   }
 
-  function isSafeUrl(url) {
-    return /^https?:\/\//i.test(url || '');
-  }
-
-  function renderSelectionPanel(n) {
+  function renderNodePanel(n) {
     selectionPanel.classList.remove('hidden');
+    selectionTitle.textContent = '選択中のノード';
+    neighborsSection.classList.remove('hidden');
+    if (editingNodeId === n.id) {
+      renderNodeEditForm(n);
+      return;
+    }
+
     const lines = [`<div class="selection-name">${escapeHtml(n.label)}</div>`];
     lines.push(`<div class="selection-meta">${n.node_type === 'owner' ? 'オーナー' : '店舗'} ・ ${escapeHtml(n.area || '-')}</div>`);
     if (n.group) lines.push(`<div class="selection-meta">グループ: ${escapeHtml(n.group)}</div>`);
@@ -385,6 +576,36 @@
     if (links.length) lines.push(`<div class="selection-links">${links.join('')}</div>`);
     selectionDetail.innerHTML = lines.join('');
 
+    if (hasEditorBridge()) {
+      const actions = document.createElement('div');
+      actions.className = 'selection-actions';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'ghost-btn';
+      editBtn.textContent = '✏️ 編集';
+      editBtn.addEventListener('click', () => { editingNodeId = n.id; renderNodePanel(n); });
+      const delBtn = document.createElement('button');
+      delBtn.className = 'ghost-btn danger';
+      delBtn.textContent = '🗑️ 削除';
+      delBtn.addEventListener('click', () => {
+        const ok = n.node_type === 'owner'
+          ? window.NetworkEditor.deleteOwner(n.id)
+          : window.NetworkEditor.deleteShop(n.id);
+        if (ok) {
+          window.NetworkEditor.saveToStorage();
+          window.NetworkEditor.renderAll();
+          clearSelection();
+          loadFromObject(window.NetworkEditor.buildVisualizerPayload());
+        }
+      });
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      selectionDetail.appendChild(actions);
+    }
+
+    renderNeighborList(n);
+  }
+
+  function renderNeighborList(n) {
     selectionNeighbors.innerHTML = '';
     const neighborEdges = getNeighborEdges(n.id);
     if (!neighborEdges.length) {
@@ -413,11 +634,287 @@
     });
   }
 
+  function buildFieldInput(spec, value) {
+    let input;
+    if (spec.type === 'select') {
+      input = document.createElement('select');
+      spec.options.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        input.appendChild(o);
+      });
+    } else if (spec.type === 'textarea') {
+      input = document.createElement('textarea');
+    } else if (spec.type === 'number') {
+      input = document.createElement('input');
+      input.type = 'number';
+      if (spec.min !== undefined) input.min = spec.min;
+      if (spec.max !== undefined) input.max = spec.max;
+      if (spec.step !== undefined) input.step = spec.step;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+    }
+    input.value = (value !== undefined && value !== null && value !== '') ? value : '';
+    return input;
+  }
+
+  function renderNodeEditForm(n) {
+    selectionDetail.innerHTML = '';
+    const form = document.createElement('div');
+    form.className = 'inline-edit-form';
+    const specs = NODE_FIELD_SPECS[n.node_type];
+    const inputs = {};
+
+    specs.forEach(spec => {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = spec.label;
+      wrap.appendChild(label);
+      const sourceValue = spec.key === 'name' ? n.label : n[spec.key];
+      const rawValue = sourceValue !== undefined && sourceValue !== null && sourceValue !== '' ? sourceValue : spec.default;
+      const input = buildFieldInput(spec, rawValue);
+      wrap.appendChild(input);
+      form.appendChild(wrap);
+      inputs[spec.key] = input;
+    });
+
+    const errorEl = document.createElement('p');
+    errorEl.className = 'inline-edit-error hidden';
+    form.appendChild(errorEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'selection-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'ghost-btn';
+    cancelBtn.textContent = 'キャンセル';
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = '保存';
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    form.appendChild(actions);
+    selectionDetail.appendChild(form);
+
+    cancelBtn.addEventListener('click', () => { editingNodeId = null; renderNodePanel(n); });
+    saveBtn.addEventListener('click', () => {
+      const values = {};
+      specs.forEach(spec => { values[spec.key] = inputs[spec.key].value; });
+      try {
+        window.NetworkEditor.updateEntity(n.node_type, n.id, values);
+        window.NetworkEditor.saveToStorage();
+        window.NetworkEditor.renderAll();
+        editingNodeId = null;
+        loadFromObject(window.NetworkEditor.buildVisualizerPayload());
+        const refreshed = state.nodeById.get(n.id);
+        if (refreshed) selectNode(refreshed);
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  function renderRelationPanel(e) {
+    selectionPanel.classList.remove('hidden');
+    selectionTitle.textContent = '選択中の関係';
+    neighborsSection.classList.add('hidden');
+    if (editingRelationId === e.id) {
+      renderRelationEditForm(e);
+      return;
+    }
+
+    const from = state.nodeById.get(e.from_id);
+    const to = state.nodeById.get(e.to_id);
+    const lines = [`<div class="selection-name">${escapeHtml(from ? from.label : '?')} ↔ ${escapeHtml(to ? to.label : '?')}</div>`];
+    lines.push(`<div class="selection-meta">関係タイプ: ${escapeHtml(e.type)}</div>`);
+    if (e.note) lines.push(`<div class="selection-meta">メモ: ${escapeHtml(e.note)}</div>`);
+    if (e.confidence) lines.push(`<div class="selection-meta">信頼度: ${escapeHtml(e.confidence)}</div>`);
+    selectionDetail.innerHTML = lines.join('');
+
+    if (hasEditorBridge()) {
+      const actions = document.createElement('div');
+      actions.className = 'selection-actions';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'ghost-btn';
+      editBtn.textContent = '✏️ 編集';
+      editBtn.addEventListener('click', () => { editingRelationId = e.id; renderRelationPanel(e); });
+      const delBtn = document.createElement('button');
+      delBtn.className = 'ghost-btn danger';
+      delBtn.textContent = '🗑️ 削除';
+      delBtn.addEventListener('click', () => {
+        const ok = window.NetworkEditor.deleteRelation(e.id);
+        if (ok) {
+          window.NetworkEditor.saveToStorage();
+          window.NetworkEditor.renderAll();
+          clearSelection();
+          loadFromObject(window.NetworkEditor.buildVisualizerPayload());
+        }
+      });
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      selectionDetail.appendChild(actions);
+    }
+  }
+
+  function renderRelationEditForm(e) {
+    selectionDetail.innerHTML = '';
+    const form = document.createElement('div');
+    form.className = 'inline-edit-form';
+
+    const typeWrap = document.createElement('div');
+    typeWrap.className = 'field';
+    const typeLabel = document.createElement('label');
+    typeLabel.textContent = '関係タイプ';
+    typeWrap.appendChild(typeLabel);
+    const typeSelect = buildFieldInput({ type: 'select', options: RELATION_TYPES }, e.type);
+    typeWrap.appendChild(typeSelect);
+    form.appendChild(typeWrap);
+
+    const noteWrap = document.createElement('div');
+    noteWrap.className = 'field';
+    const noteLabel = document.createElement('label');
+    noteLabel.textContent = 'メモ';
+    noteWrap.appendChild(noteLabel);
+    const noteInput = buildFieldInput({ type: 'textarea' }, e.note);
+    noteWrap.appendChild(noteInput);
+    form.appendChild(noteWrap);
+
+    const errorEl = document.createElement('p');
+    errorEl.className = 'inline-edit-error hidden';
+    form.appendChild(errorEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'selection-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'ghost-btn';
+    cancelBtn.textContent = 'キャンセル';
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = '保存';
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    form.appendChild(actions);
+    selectionDetail.appendChild(form);
+
+    cancelBtn.addEventListener('click', () => { editingRelationId = null; renderRelationPanel(e); });
+    saveBtn.addEventListener('click', () => {
+      try {
+        window.NetworkEditor.updateEntity('relation', e.id, {
+          from_id: e.from_id, to_id: e.to_id, type: typeSelect.value,
+          note: noteInput.value, source: e.source || 'manual', confidence: e.confidence || 'sure',
+        });
+        window.NetworkEditor.saveToStorage();
+        window.NetworkEditor.renderAll();
+        editingRelationId = null;
+        loadFromObject(window.NetworkEditor.buildVisualizerPayload());
+        const refreshed = state.edges.find(edge => edge.id === e.id);
+        if (refreshed) selectRelation(refreshed);
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
   document.getElementById('viz-clearSelection').addEventListener('click', clearSelection);
 
   svg.addEventListener('click', () => {
     if (panMoved) { panMoved = false; return; }
     clearSelection();
+  });
+
+  // ------------------------------------------------------------------
+  // 関係をつなぐモード（ノードを2つクリックして新規関係を作成）
+  // ------------------------------------------------------------------
+  function setConnectMode(on) {
+    connectMode = on;
+    connectFromId = null;
+    connectModeBtn.classList.toggle('active', connectMode);
+    nodeElements.forEach(g => g.classList.remove('connect-from'));
+    if (connectMode) clearSelection();
+  }
+
+  connectModeBtn.addEventListener('click', () => setConnectMode(!connectMode));
+
+  function handleConnectClick(n) {
+    if (!connectFromId) {
+      connectFromId = n.id;
+      const g = nodeElements.get(n.id);
+      if (g) g.classList.add('connect-from');
+      return;
+    }
+    if (connectFromId === n.id) {
+      const g = nodeElements.get(n.id);
+      if (g) g.classList.remove('connect-from');
+      connectFromId = null;
+      return;
+    }
+    const fromId = connectFromId;
+    const toId = n.id;
+    const fromG = nodeElements.get(fromId);
+    if (fromG) fromG.classList.remove('connect-from');
+    connectFromId = null;
+    openCreateRelationModal(fromId, toId);
+  }
+
+  function openCreateRelationModal(fromId, toId) {
+    const fromNode = state.nodeById.get(fromId);
+    const toNode = state.nodeById.get(toId);
+    document.getElementById('viz-relationModalTitle').textContent =
+      `${fromNode ? fromNode.label : '?'} → ${toNode ? toNode.label : '?'} の関係を追加`;
+
+    const typeSelect = document.getElementById('viz-relationType');
+    typeSelect.innerHTML = '';
+    RELATION_TYPES.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t;
+      o.textContent = t;
+      typeSelect.appendChild(o);
+    });
+    document.getElementById('viz-relationNote').value = '';
+    const errorEl = document.getElementById('viz-relationError');
+    errorEl.textContent = '';
+    errorEl.classList.add('hidden');
+    relationModal.classList.remove('hidden');
+
+    const saveBtn = document.getElementById('viz-relationSave');
+    const cancelBtn = document.getElementById('viz-relationCancel');
+
+    function cleanup() {
+      saveBtn.removeEventListener('click', onSave);
+      cancelBtn.removeEventListener('click', onCancel);
+      relationModal.classList.add('hidden');
+    }
+    function onCancel() { cleanup(); }
+    function onSave() {
+      try {
+        window.NetworkEditor.addEntity('relation', {
+          from_id: fromId, to_id: toId, type: typeSelect.value,
+          note: document.getElementById('viz-relationNote').value,
+          source: 'manual', confidence: 'sure',
+        });
+        window.NetworkEditor.saveToStorage();
+        window.NetworkEditor.renderAll();
+        cleanup();
+        loadFromObject(window.NetworkEditor.buildVisualizerPayload());
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+      }
+    }
+    saveBtn.addEventListener('click', onSave);
+    cancelBtn.addEventListener('click', onCancel);
+  }
+
+  document.addEventListener('keydown', ev => {
+    if (ev.key !== 'Escape') return;
+    if (connectFromId) {
+      const g = nodeElements.get(connectFromId);
+      if (g) g.classList.remove('connect-from');
+      connectFromId = null;
+    }
+    relationModal.classList.add('hidden');
   });
 
   // ------------------------------------------------------------------
@@ -475,12 +972,6 @@
       groups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
   }
 
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-  }
-
   function isNodeVisible(n) {
     const area = areaFilterSelect.value;
     const group = groupFilterSelect.value;
@@ -497,7 +988,7 @@
   }
 
   function applyFilters() {
-    if (selectedNodeId) return; // 選択中はハイライト表示を優先
+    if (selectedNodeId || selectedRelationId) return; // 選択中はハイライト表示を優先
     const mode = visibilityModeSelect.value;
     const group = groupFilterSelect.value;
 
@@ -535,9 +1026,9 @@
     statRelations.textContent = state.edges.filter(e => e.type !== 'owner_shop').length;
   }
 
-  areaFilterSelect.addEventListener('change', () => { clearSelection(); applyFilters(); });
-  groupFilterSelect.addEventListener('change', () => { clearSelection(); applyFilters(); });
-  visibilityModeSelect.addEventListener('change', applyFilters);
+  areaFilterSelect.addEventListener('change', () => { clearSelection(); applyFilters(); renderRegionBoxes(); });
+  groupFilterSelect.addEventListener('change', () => { clearSelection(); applyFilters(); renderRegionBoxes(); });
+  visibilityModeSelect.addEventListener('change', () => { applyFilters(); renderRegionBoxes(); });
 
   // ------------------------------------------------------------------
   // ズーム・パン
@@ -602,6 +1093,7 @@
       const g = nodeElements.get(draggingNode.id);
       if (g) g.setAttribute('transform', `translate(${draggingNode.x}, ${draggingNode.y})`);
       updateEdgePositionsForNode(draggingNode.id);
+      renderRegionBoxes();
       return;
     }
 
@@ -625,8 +1117,13 @@
       const g = nodeElements.get(draggingNode.id);
       if (g) g.classList.remove('dragging');
       if (nodeDragMoved) {
-        draggingNode.pinned = true;
-        if (g) g.classList.add('pinned');
+        draggingNode.pos_x = draggingNode.x;
+        draggingNode.pos_y = draggingNode.y;
+        renderRegionBoxes();
+        if (hasEditorBridge()) {
+          window.NetworkEditor.setNodePosition(draggingNode.id, draggingNode.pos_x, draggingNode.pos_y);
+          window.NetworkEditor.renderAll();
+        }
       }
       draggingNode = null;
       return;

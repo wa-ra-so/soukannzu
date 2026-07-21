@@ -797,10 +797,6 @@ fill: var(--owner-color);
 fill: var(--shop-color);
 }
 
-#view-visualizer .node.pinned circle:not(.hit-area) {
-stroke: var(--text); stroke-dasharray: 2 1.5;
-}
-
 #view-visualizer .node.selected circle:not(.hit-area) {
 stroke: var(--accent);
   stroke-width: 3;
@@ -1096,6 +1092,102 @@ margin-top: 8px;
 display: none;
   }
 }
+
+/* ==================== visualizer: 背景ボックス / 編集 / 関係をつなぐモード ==================== */
+#view-visualizer .region-box { pointer-events: none; }
+#view-visualizer .region-label {
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+}
+
+#view-visualizer .node.connect-from circle:not(.hit-area) {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: 3 2;
+}
+
+#view-visualizer #viz-connectMode.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+#view-visualizer .edge.selectable { cursor: pointer; }
+
+#view-visualizer .selection-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+#view-visualizer .ghost-btn.danger {
+  color: var(--danger, #d1453d);
+  border-color: var(--danger, #d1453d);
+}
+#view-visualizer .ghost-btn.danger:hover {
+  background: var(--danger-soft, #fbeceb);
+}
+
+#view-visualizer .inline-edit-form .field {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+#view-visualizer .inline-edit-form label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+#view-visualizer .inline-edit-form input,
+#view-visualizer .inline-edit-form select,
+#view-visualizer .inline-edit-form textarea {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+#view-visualizer .inline-edit-error {
+  color: var(--danger, #d1453d);
+  font-size: 11px;
+  margin: 4px 0;
+}
+#view-visualizer .inline-edit-error.hidden { display: none; }
+
+#view-visualizer #viz-relationModal .field {
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#view-visualizer #viz-relationModal label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+#view-visualizer #viz-relationModal select,
+#view-visualizer #viz-relationModal textarea {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+}
+#view-visualizer #viz-relationModal textarea { min-height: 50px; }
+#view-visualizer #viz-relationModal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+#view-visualizer #viz-neighborsSection.hidden { display: none; }
 
 /* ==================== overrides: let inner app roots fill their view container ==================== */
 #view-editor #ed-app { min-height: 100%; }

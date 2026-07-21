@@ -14,6 +14,7 @@ const FIELD_SPECS = {
     { key: 'area', label: 'エリア', type: 'text', required: true },
     { key: 'group', label: 'グループ', type: 'text' },
     { key: 'note', label: 'メモ', type: 'textarea' },
+    { key: 'node_size', label: '相関図での円の大きさ', type: 'number', min: 0.5, max: 3, step: 0.1, default: 1 },
     { key: 'source', label: 'ソース', type: 'select', options: VALID_SOURCES, default: 'manual' },
     { key: 'confidence', label: '信頼度', type: 'select', options: VALID_CONFIDENCE, default: 'sure' },
   ],
@@ -139,12 +140,18 @@ function findEntity(kind, id) {
   if (kind === 'relation') return data.relations.find(r => r.id === id);
 }
 
+function parseNodeSize(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(3, Math.max(0.5, n));
+}
+
 function addEntity(kind, values) {
   if (kind === 'owner') {
     validateOwnerInput(values);
     data.owners.push({
       id: genId('owner'), name: values.name.trim(), area: values.area.trim(),
-      group: values.group || '', note: values.note || '',
+      group: values.group || '', note: values.note || '', node_size: parseNodeSize(values.node_size),
       source: values.source || 'manual', confidence: values.confidence || 'sure',
     });
   } else if (kind === 'shop') {
@@ -170,7 +177,8 @@ function updateEntity(kind, id, values) {
     validateOwnerInput(values);
     Object.assign(findEntity('owner', id), {
       name: values.name.trim(), area: values.area.trim(), group: values.group || '',
-      note: values.note || '', source: values.source || 'manual', confidence: values.confidence || 'sure',
+      note: values.note || '', node_size: parseNodeSize(values.node_size),
+      source: values.source || 'manual', confidence: values.confidence || 'sure',
     });
   } else if (kind === 'shop') {
     validateShopInput(values);
@@ -344,6 +352,12 @@ function renderForm(specs, values) {
       });
     } else if (spec.type === 'textarea') {
       input = document.createElement('textarea');
+    } else if (spec.type === 'number') {
+      input = document.createElement('input');
+      input.type = 'number';
+      if (spec.min !== undefined) input.min = spec.min;
+      if (spec.max !== undefined) input.max = spec.max;
+      if (spec.step !== undefined) input.step = spec.step;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -653,15 +667,22 @@ document.getElementById('ed-downloadBtn').addEventListener('click', () => {
 function buildVisualizerPayload() {
   const nodes = [];
   data.owners.forEach(o => nodes.push({
-    id: o.id, label: o.name, node_type: 'owner', area: o.area, group: o.group || '', confidence: o.confidence,
+    id: o.id, label: o.name, node_type: 'owner', area: o.area, group: o.group || '',
+    note: o.note || '', source: o.source, confidence: o.confidence,
+    pos_x: o.pos_x, pos_y: o.pos_y, node_size: o.node_size,
   }));
   data.shops.forEach(s => nodes.push({
-    id: s.id, label: s.name, node_type: 'shop', genre: s.genre || '', area: s.area, group: s.group || '', confidence: s.confidence,
-    tabelog_url: s.tabelog_url || '', salesforce_url: s.salesforce_url || '',
+    id: s.id, label: s.name, node_type: 'shop', genre: s.genre || '', area: s.area, group: s.group || '',
+    address: s.address || '', tabelog_url: s.tabelog_url || '', salesforce_url: s.salesforce_url || '',
+    source: s.source, confidence: s.confidence,
+    pos_x: s.pos_x, pos_y: s.pos_y,
   }));
   const edges = [];
   data.shops.forEach(s => edges.push({ from_id: s.owner_id, to_id: s.id, type: 'owner_shop', confidence: s.confidence }));
-  data.relations.forEach(r => edges.push({ from_id: r.from_id, to_id: r.to_id, type: r.type, confidence: r.confidence }));
+  data.relations.forEach(r => edges.push({
+    id: r.id, from_id: r.from_id, to_id: r.to_id, type: r.type,
+    note: r.note || '', source: r.source, confidence: r.confidence,
+  }));
   return { metadata: data.metadata, nodes, edges };
 }
 
@@ -670,9 +691,30 @@ document.getElementById('ed-exportVisualizerBtn').addEventListener('click', () =
   downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), 'network_for_visualizer.json');
 });
 
+function setNodePosition(id, x, y) {
+  const node = findNodeById(id);
+  if (!node) return;
+  node.pos_x = x;
+  node.pos_y = y;
+  saveToStorage();
+}
+
 window.NetworkEditor = {
   getData: () => data,
   buildVisualizerPayload,
+  addEntity,
+  updateEntity,
+  deleteOwner,
+  deleteShop,
+  deleteRelation,
+  findEntity,
+  findNodeById,
+  setNodePosition,
+  saveToStorage,
+  renderAll,
+  VALID_SOURCES,
+  VALID_CONFIDENCE,
+  VALID_RELATION_TYPES,
 };
 
 document.getElementById('ed-clearBtn').addEventListener('click', () => {
