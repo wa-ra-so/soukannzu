@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>飲食店ネットワーク データ入力</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <h1>飲食店ネットワーク データ入力</h1>
+    <div class="actions">
+      <label class="file-button">
+        📂 JSONを開く
+        <input type="file" id="fileInput" accept="application/json">
+      </label>
+      <button id="downloadBtn">💾 JSONダウンロード</button>
+      <button id="exportVisualizerBtn">🕸️ 相関図用に書き出す</button>
+      <button id="validateBtn">✅ 検証</button>
+      <button id="sampleBtn" class="ghost">サンプルを読み込む</button>
+      <button id="clearBtn" class="ghost danger">全消去</button>
+    </div>
+  </header>
+
+  <div id="statsBar">
+    <span class="stat-chip">オーナー <b id="statOwners">0</b></span>
+    <span class="stat-chip">店舗 <b id="statShops">0</b></span>
+    <span class="stat-chip">関係 <b id="statRelations">0</b></span>
+    <span id="autosaveIndicator">ブラウザに自動保存されます</span>
+  </div>
+
+  <nav id="tabs">
+    <button class="tab active" data-tab="owners">オーナー</button>
+    <button class="tab" data-tab="shops">店舗</button>
+    <button class="tab" data-tab="relations">関係</button>
+  </nav>
+
+  <main>
+    <section id="panel-owners" class="panel active">
+      <div class="panel-toolbar">
+        <input type="search" class="table-search" data-for="owners" placeholder="🔎 名前・エリア・グループで絞り込み">
+        <button class="add-btn" data-add="owner">＋ オーナーを追加</button>
+      </div>
+      <div class="table-wrap">
+        <table id="table-owners">
+          <thead>
+            <tr>
+              <th>名前</th><th>エリア</th><th>グループ</th><th>メモ</th><th>ソース</th><th>信頼度</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" data-empty="owners">まだオーナーが登録されていません。「＋ オーナーを追加」から始めてください。</p>
+      </div>
+    </section>
+
+    <section id="panel-shops" class="panel">
+      <div class="panel-toolbar">
+        <input type="search" class="table-search" data-for="shops" placeholder="🔎 名前・エリア・ジャンルで絞り込み">
+        <button class="add-btn" data-add="shop">＋ 店舗を追加</button>
+      </div>
+      <div class="table-wrap">
+        <table id="table-shops">
+          <thead>
+            <tr>
+              <th>名前</th><th>ジャンル</th><th>オーナー</th><th>エリア</th><th>グループ</th><th>ソース</th><th>信頼度</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" data-empty="shops">まだ店舗が登録されていません。オーナーを先に登録してください。</p>
+      </div>
+    </section>
+
+    <section id="panel-relations" class="panel">
+      <div class="panel-toolbar">
+        <input type="search" class="table-search" data-for="relations" placeholder="🔎 名前・タイプで絞り込み">
+        <button class="add-btn" data-add="relation">＋ 関係を追加</button>
+      </div>
+      <div class="table-wrap">
+        <table id="table-relations">
+          <thead>
+            <tr>
+              <th>From</th><th>To</th><th>タイプ</th><th>メモ</th><th>ソース</th><th>信頼度</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" data-empty="relations">まだ関係が登録されていません。オーナー・店舗を2件以上登録してください。</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="formModal" class="modal hidden">
+  <div class="modal-card">
+    <h2 id="formTitle"></h2>
+    <form id="entityForm"></form>
+    <p id="formError" class="form-error hidden"></p>
+    <div class="modal-actions">
+      <button type="button" id="formCancel" class="ghost">キャンセル</button>
+      <button type="button" id="formSubmit">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="validationModal" class="modal hidden">
+  <div class="modal-card">
+    <h2>検証結果</h2>
+    <div id="validationBody"></div>
+    <div class="modal-actions">
+      <button type="button" id="validationClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

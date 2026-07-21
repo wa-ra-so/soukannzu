@@ -4,8 +4,6 @@
 //   edges: [{from_id,to_id,type,confidence}] } 形式を前提とする。
 
 (() => {
-  const RELATION_TYPES = ['owner_shop', 'same_building', 'family', 'business', 'other'];
-
   const svg = document.getElementById('graph');
   const viewport = document.getElementById('viewport');
   const dropZone = document.getElementById('dropZone');
@@ -18,6 +16,12 @@
   const statShops = document.getElementById('statShops');
   const statRelations = document.getElementById('statRelations');
   const guideModal = document.getElementById('guideModal');
+  const searchBox = document.getElementById('searchBox');
+  const searchResults = document.getElementById('searchResults');
+  const selectionPanel = document.getElementById('selectionPanel');
+  const selectionDetail = document.getElementById('selectionDetail');
+  const selectionNeighbors = document.getElementById('selectionNeighbors');
+  const canvasWrap = document.getElementById('canvasWrap');
 
   let edgesGroup = null;
   let nodesGroup = null;
@@ -26,12 +30,20 @@
   const state = { nodes: [], edges: [], nodeById: new Map() };
   const nodeElements = new Map();
   const edgeElements = new Map();
+  let selectedNodeId = null;
 
-  let isDragging = false;
-  let dragMoved = false;
-  let dragStart = { x: 0, y: 0 };
+  // パン(背景ドラッグ)の状態
+  let isPanning = false;
+  let panMoved = false;
+  let panStart = { x: 0, y: 0 };
   let cameraStart = { x: 0, y: 0 };
   let dragSimplified = false;
+
+  // ノードドラッグの状態
+  let draggingNode = null;
+  let nodeDragStart = { x: 0, y: 0 };
+  let nodeStartPos = { x: 0, y: 0 };
+  let nodeDragMoved = false;
 
   // ------------------------------------------------------------------
   // データ読み込み
@@ -46,6 +58,7 @@
       e => parsed.nodes.some(n => n.id === e.from_id) && parsed.nodes.some(n => n.id === e.to_id)
     );
     state.nodeById = new Map(state.nodes.map(n => [n.id, n]));
+    selectedNodeId = null;
 
     dropZone.classList.add('hidden');
     simulateLayout(state.nodes, state.edges);
@@ -71,7 +84,6 @@
     if (file) loadFile(file);
   });
 
-  const canvasWrap = document.getElementById('canvasWrap');
   canvasWrap.addEventListener('dragover', e => {
     e.preventDefault();
     dropZone.classList.add('dragover');
@@ -85,7 +97,7 @@
   });
 
   // ------------------------------------------------------------------
-  // レイアウト（簡易 Fruchterman-Reingold）
+  // レイアウト（簡易 Fruchterman-Reingold + 中心引力）
   // ------------------------------------------------------------------
   function simulateLayout(nodes, edges) {
     const width = 1200;
@@ -103,6 +115,8 @@
     });
 
     let temperature = width / 10;
+    const centerX = width / 2;
+    const centerY = height / 2;
 
     for (let iter = 0; iter < iterations; iter++) {
       const disp = nodes.map(() => ({ x: 0, y: 0 }));
@@ -133,6 +147,12 @@
         disp[i].x -= fx; disp[i].y -= fy;
         disp[j].x += fx; disp[j].y += fy;
       });
+
+      // 中心への弱い引力（鎖状に伸びたり孤立成分が飛び散るのを防ぐ）
+      for (let i = 0; i < nodes.length; i++) {
+        disp[i].x += (centerX - nodes[i].x) * 0.008;
+        disp[i].y += (centerY - nodes[i].y) * 0.008;
+      }
 
       for (let i = 0; i < nodes.length; i++) {
         const dx = disp[i].x;
@@ -230,20 +250,43 @@
       });
       g.addEventListener('mousemove', moveTooltip);
       g.addEventListener('mouseleave', hideTooltip);
+
+      g.addEventListener('mousedown', ev => {
+        if (ev.button !== 0) return;
+        ev.stopPropagation();
+        draggingNode = n;
+        nodeDragMoved = false;
+        nodeDragStart = { x: ev.clientX, y: ev.clientY };
+        nodeStartPos = { x: n.x, y: n.y };
+        g.classList.add('dragging');
+      });
+
+      g.addEventListener('click', ev => {
+        ev.stopPropagation();
+        if (nodeDragMoved) { nodeDragMoved = false; return; }
+        selectNode(n);
+      });
+
       g.addEventListener('dblclick', ev => {
         ev.stopPropagation();
         centerOnNode(n);
       });
 
+      if (n.pinned) g.classList.add('pinned');
       nodeElements.set(n.id, g);
     });
 
     applyFilters();
     updateStats();
+    if (selectedNodeId) {
+      const n = state.nodeById.get(selectedNodeId);
+      if (n) renderSelectionHighlight(); else clearSelection();
+    }
   }
 
-  function updateEdgePositions() {
+  function updateEdgePositionsForNode(nodeId) {
     state.edges.forEach(e => {
+      if (e.from_id !== nodeId && e.to_id !== nodeId) return;
       const el = edgeElements.get(edgeKey(e));
       const from = state.nodeById.get(e.from_id);
       const to = state.nodeById.get(e.to_id);
@@ -265,12 +308,150 @@
   }
   function moveTooltip(ev) {
     const wrapRect = canvasWrap.getBoundingClientRect();
-    tooltip.style.left = (ev.clientX - wrapRect.left + 12) + 'px';
-    tooltip.style.top = (ev.clientY - wrapRect.top + 12) + 'px';
+    let left = ev.clientX - wrapRect.left + 12;
+    let top = ev.clientY - wrapRect.top + 12;
+    left = Math.min(left, wrapRect.width - 220);
+    top = Math.min(top, wrapRect.height - 100);
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
   }
   function hideTooltip() {
     tooltip.classList.add('hidden');
   }
+
+  // ------------------------------------------------------------------
+  // 選択・つながりハイライト
+  // ------------------------------------------------------------------
+  function getNeighborEdges(nodeId) {
+    return state.edges.filter(e => e.from_id === nodeId || e.to_id === nodeId);
+  }
+
+  function selectNode(n) {
+    selectedNodeId = n.id;
+    renderSelectionHighlight();
+    renderSelectionPanel(n);
+  }
+
+  function clearSelection() {
+    selectedNodeId = null;
+    nodeElements.forEach(g => g.classList.remove('selected'));
+    edgeElements.forEach(el => el.classList.remove('emphasized'));
+    selectionPanel.classList.add('hidden');
+    applyFilters();
+  }
+
+  function renderSelectionHighlight() {
+    if (!selectedNodeId) return;
+    const neighborIds = new Set([selectedNodeId]);
+    getNeighborEdges(selectedNodeId).forEach(e => {
+      neighborIds.add(e.from_id);
+      neighborIds.add(e.to_id);
+    });
+
+    state.nodes.forEach(n => {
+      const g = nodeElements.get(n.id);
+      if (!g) return;
+      g.classList.toggle('selected', n.id === selectedNodeId);
+      const inEgo = neighborIds.has(n.id);
+      g.style.opacity = inEgo ? '1' : '0.15';
+      g.style.display = '';
+    });
+
+    state.edges.forEach(e => {
+      const el = edgeElements.get(edgeKey(e));
+      if (!el) return;
+      const touches = e.from_id === selectedNodeId || e.to_id === selectedNodeId;
+      el.classList.toggle('emphasized', touches);
+      el.style.opacity = touches ? '1' : '0.06';
+      el.style.display = '';
+    });
+  }
+
+  function renderSelectionPanel(n) {
+    selectionPanel.classList.remove('hidden');
+    const lines = [`<div class="selection-name">${escapeHtml(n.label)}</div>`];
+    lines.push(`<div class="selection-meta">${n.node_type === 'owner' ? 'オーナー' : '店舗'} ・ ${escapeHtml(n.area || '-')}</div>`);
+    if (n.group) lines.push(`<div class="selection-meta">グループ: ${escapeHtml(n.group)}</div>`);
+    if (n.genre) lines.push(`<div class="selection-meta">ジャンル: ${escapeHtml(n.genre)}</div>`);
+    if (n.confidence) lines.push(`<div class="selection-meta">信頼度: ${escapeHtml(n.confidence)}</div>`);
+    selectionDetail.innerHTML = lines.join('');
+
+    selectionNeighbors.innerHTML = '';
+    const neighborEdges = getNeighborEdges(n.id);
+    if (!neighborEdges.length) {
+      const li = document.createElement('li');
+      li.textContent = 'つながりはありません';
+      li.style.cursor = 'default';
+      selectionNeighbors.appendChild(li);
+    }
+    neighborEdges.forEach(e => {
+      const otherId = e.from_id === n.id ? e.to_id : e.from_id;
+      const other = state.nodeById.get(otherId);
+      if (!other) return;
+      const li = document.createElement('li');
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = other.label;
+      const typeSpan = document.createElement('span');
+      typeSpan.className = 'neighbor-type';
+      typeSpan.textContent = e.type;
+      li.appendChild(nameSpan);
+      li.appendChild(typeSpan);
+      li.addEventListener('click', () => {
+        selectNode(other);
+        centerOnNode(other);
+      });
+      selectionNeighbors.appendChild(li);
+    });
+  }
+
+  document.getElementById('clearSelection').addEventListener('click', clearSelection);
+
+  svg.addEventListener('click', () => {
+    if (panMoved) { panMoved = false; return; }
+    clearSelection();
+  });
+
+  // ------------------------------------------------------------------
+  // 検索
+  // ------------------------------------------------------------------
+  function renderSearchResults(matches) {
+    if (!matches.length) {
+      searchResults.innerHTML = '<div class="result-item">該当なし</div>';
+      searchResults.classList.remove('hidden');
+      return;
+    }
+    searchResults.innerHTML = '';
+    matches.forEach(n => {
+      const item = document.createElement('div');
+      item.className = 'result-item';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = n.label;
+      const typeSpan = document.createElement('span');
+      typeSpan.className = 'result-type';
+      typeSpan.textContent = n.node_type === 'owner' ? 'オーナー' : '店舗';
+      item.appendChild(nameSpan);
+      item.appendChild(typeSpan);
+      item.addEventListener('click', () => {
+        selectNode(n);
+        centerOnNode(n);
+        searchResults.classList.add('hidden');
+        searchBox.value = n.label;
+      });
+      searchResults.appendChild(item);
+    });
+    searchResults.classList.remove('hidden');
+  }
+
+  searchBox.addEventListener('input', () => {
+    const q = searchBox.value.trim().toLowerCase();
+    if (!q) { searchResults.classList.add('hidden'); searchResults.innerHTML = ''; return; }
+    const matches = state.nodes.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+    renderSearchResults(matches);
+  });
+
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('.toolbar-search')) searchResults.classList.add('hidden');
+  });
 
   // ------------------------------------------------------------------
   // フィルタ
@@ -307,6 +488,7 @@
   }
 
   function applyFilters() {
+    if (selectedNodeId) return; // 選択中はハイライト表示を優先
     const mode = visibilityModeSelect.value;
     const group = groupFilterSelect.value;
 
@@ -317,7 +499,7 @@
       el.style.display = (!visible && mode === 'hide') ? 'none' : '';
       el.style.opacity = visible ? '1' : '0.2';
 
-      const circle = el.querySelector('circle');
+      const circle = el.querySelector('circle:not(.hit-area)');
       if (group !== '全て表示' && n.group === group) {
         circle.style.stroke = groupColor(group);
         circle.style.strokeWidth = '3';
@@ -344,8 +526,8 @@
     statRelations.textContent = state.edges.filter(e => e.type !== 'owner_shop').length;
   }
 
-  areaFilterSelect.addEventListener('change', applyFilters);
-  groupFilterSelect.addEventListener('change', applyFilters);
+  areaFilterSelect.addEventListener('change', () => { clearSelection(); applyFilters(); });
+  groupFilterSelect.addEventListener('change', () => { clearSelection(); applyFilters(); });
   visibilityModeSelect.addEventListener('change', applyFilters);
 
   // ------------------------------------------------------------------
@@ -356,11 +538,9 @@
   function applyTransform() {
     viewport.setAttribute('transform', `translate(${camera.x}, ${camera.y}) scale(${camera.scale})`);
     zoomPercentEl.textContent = Math.round(camera.scale * 100) + '%';
-    nodesGroup && nodesGroup.classList.toggle('low-zoom', camera.scale < 0.5);
-    if (camera.scale < 0.5) {
-      nodesGroup && nodesGroup.querySelectorAll('text').forEach(t => t.style.display = 'none');
-    } else {
-      nodesGroup && nodesGroup.querySelectorAll('text').forEach(t => t.style.display = '');
+    if (nodesGroup) {
+      const showLabels = camera.scale >= 0.5 && !dragSimplified;
+      nodesGroup.querySelectorAll('text').forEach(t => t.style.display = showLabels ? '' : 'none');
     }
   }
 
@@ -393,31 +573,57 @@
   document.getElementById('fitButton').addEventListener('click', () => fitView(true));
 
   svg.addEventListener('mousedown', ev => {
-    if (ev.button !== 0) return;
-    isDragging = true;
-    dragMoved = false;
-    dragStart = { x: ev.clientX, y: ev.clientY };
+    if (ev.button !== 0 || draggingNode) return;
+    isPanning = true;
+    panMoved = false;
+    panStart = { x: ev.clientX, y: ev.clientY };
     cameraStart = { x: camera.x, y: camera.y };
     svg.classList.add('grabbing');
   });
+
   window.addEventListener('mousemove', ev => {
-    if (!isDragging) return;
-    const dx = ev.clientX - dragStart.x;
-    const dy = ev.clientY - dragStart.y;
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-      dragMoved = true;
+    if (draggingNode) {
+      const dx = (ev.clientX - nodeDragStart.x) / camera.scale;
+      const dy = (ev.clientY - nodeDragStart.y) / camera.scale;
+      if (Math.abs(ev.clientX - nodeDragStart.x) > 2 || Math.abs(ev.clientY - nodeDragStart.y) > 2) {
+        nodeDragMoved = true;
+      }
+      draggingNode.x = nodeStartPos.x + dx;
+      draggingNode.y = nodeStartPos.y + dy;
+      const g = nodeElements.get(draggingNode.id);
+      if (g) g.setAttribute('transform', `translate(${draggingNode.x}, ${draggingNode.y})`);
+      updateEdgePositionsForNode(draggingNode.id);
+      return;
+    }
+
+    if (!isPanning) return;
+    const dx = ev.clientX - panStart.x;
+    const dy = ev.clientY - panStart.y;
+    if ((Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
+      panMoved = true;
       if (!dragSimplified) {
         dragSimplified = true;
-        nodesGroup && nodesGroup.querySelectorAll('text').forEach(t => t.style.display = 'none');
+        applyTransform();
       }
     }
     camera.x = cameraStart.x + dx;
     camera.y = cameraStart.y + dy;
     applyTransform();
   });
+
   window.addEventListener('mouseup', () => {
-    if (!isDragging) return;
-    isDragging = false;
+    if (draggingNode) {
+      const g = nodeElements.get(draggingNode.id);
+      if (g) g.classList.remove('dragging');
+      if (nodeDragMoved) {
+        draggingNode.pinned = true;
+        if (g) g.classList.add('pinned');
+      }
+      draggingNode = null;
+      return;
+    }
+    if (!isPanning) return;
+    isPanning = false;
     svg.classList.remove('grabbing');
     if (dragSimplified) {
       dragSimplified = false;
