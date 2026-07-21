@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>飲食店ネットワーク相関図・データ入力</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app-shell">
+  <nav id="app-nav">
+    <button class="app-nav-btn" id="nav-editor" data-view="editor">📝 データ入力</button>
+    <button class="app-nav-btn" id="nav-visualizer" data-view="visualizer">🕸️ 相関図</button>
+    <span class="app-nav-spacer"></span>
+    <span class="app-nav-hint">データ入力の内容は相関図タブに切り替えると自動的に反映されます</span>
+  </nav>
+
+  <div id="app-views">
+    <div id="view-editor" class="app-view">
+<div id="ed-app">
+  <header id="ed-topbar">
+    <h1>飲食店ネットワーク データ入力</h1>
+    <div class="actions">
+      <label class="file-button">
+        📂 JSONを開く
+        <input type="file" id="ed-fileInput" accept="application/json">
+      </label>
+      <button id="ed-downloadBtn">💾 JSONダウンロード</button>
+      <button id="ed-exportVisualizerBtn">🕸️ 相関図用に書き出す</button>
+      <button id="ed-validateBtn">✅ 検証</button>
+      <button id="ed-sampleBtn" class="ghost">サンプルを読み込む</button>
+      <button id="ed-clearBtn" class="ghost danger">全消去</button>
+    </div>
+  </header>
+
+  <div id="ed-statsBar">
+    <span class="stat-chip">オーナー <b id="ed-statOwners">0</b></span>
+    <span class="stat-chip">店舗 <b id="ed-statShops">0</b></span>
+    <span class="stat-chip">関係 <b id="ed-statRelations">0</b></span>
+    <span id="ed-autosaveIndicator">ブラウザに自動保存されます</span>
+  </div>
+
+  <nav id="ed-tabs">
+    <button class="tab active" data-tab="owners">オーナー</button>
+    <button class="tab" data-tab="shops">店舗</button>
+    <button class="tab" data-tab="relations">関係</button>
+  </nav>
+
+  <main>
+    <section id="ed-panel-owners" class="panel active">
+      <div class="panel-toolbar">
+        <input type="search" class="table-search" data-for="owners" placeholder="🔎 名前・エリア・グループで絞り込み">
+        <button class="add-btn" data-add="owner">＋ オーナーを追加</button>
+      </div>
+      <div class="table-wrap">
+        <table id="ed-table-owners">
+          <thead>
+            <tr>
+              <th>名前</th><th>エリア</th><th>グループ</th><th>メモ</th><th>ソース</th><th>信頼度</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" data-empty="owners">まだオーナーが登録されていません。「＋ オーナーを追加」から始めてください。</p>
+      </div>
+    </section>
+
+    <section id="ed-panel-shops" class="panel">
+      <div class="panel-toolbar">
+        <input type="search" class="table-search" data-for="shops" placeholder="🔎 名前・エリア・ジャンルで絞り込み">
+        <button class="add-btn" data-add="shop">＋ 店舗を追加</button>
+      </div>
+      <div class="table-wrap">
+        <table id="ed-table-shops">
+          <thead>
+            <tr>
+              <th>名前</th><th>ジャンル</th><th>オーナー</th><th>エリア</th><th>グループ</th><th>リンク</th><th>ソース</th><th>信頼度</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" data-empty="shops">まだ店舗が登録されていません。オーナーを先に登録してください。</p>
+      </div>
+    </section>
+
+    <section id="ed-panel-relations" class="panel">
+      <div class="panel-toolbar">
+        <input type="search" class="table-search" data-for="relations" placeholder="🔎 名前・タイプで絞り込み">
+        <button class="add-btn" data-add="relation">＋ 関係を追加</button>
+      </div>
+      <div class="table-wrap">
+        <table id="ed-table-relations">
+          <thead>
+            <tr>
+              <th>From</th><th>To</th><th>タイプ</th><th>メモ</th><th>ソース</th><th>信頼度</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-state" data-empty="relations">まだ関係が登録されていません。オーナー・店舗を2件以上登録してください。</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="ed-formModal" class="modal hidden">
+  <div class="modal-card">
+    <h2 id="ed-formTitle"></h2>
+    <form id="ed-entityForm"></form>
+    <p id="ed-formError" class="form-error hidden"></p>
+    <div class="modal-actions">
+      <button type="button" id="ed-formCancel" class="ghost">キャンセル</button>
+      <button type="button" id="ed-formSubmit">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="ed-validationModal" class="modal hidden">
+  <div class="modal-card">
+    <h2>検証結果</h2>
+    <div id="ed-validationBody"></div>
+    <div class="modal-actions">
+      <button type="button" id="ed-validationClose">閉じる</button>
+    </div>
+  </div>
+</div>
+    </div>
+
+    <div id="view-visualizer" class="app-view hidden">
+<div id="viz-app">
+  <header id="viz-toolbar">
+    <div class="toolbar-group">
+      <button id="viz-zoomOut" title="縮小">－</button>
+      <span id="viz-zoomPercent">100%</span>
+      <button id="viz-zoomIn" title="拡大">＋</button>
+      <button id="viz-fitButton">🔄 フィット</button>
+    </div>
+    <div class="toolbar-group toolbar-search">
+      <input type="search" id="viz-searchBox" placeholder="🔎 名前で検索…" autocomplete="off">
+      <div id="viz-searchResults" class="hidden"></div>
+    </div>
+    <div class="toolbar-group">
+      <label>🏘️ エリア
+        <select id="viz-areaFilter"><option value="全体">全体</option></select>
+      </label>
+      <label>👥 グループ
+        <select id="viz-groupFilter"><option value="全て表示">全て表示</option></select>
+      </label>
+      <label>👁️
+        <select id="viz-visibilityMode">
+          <option value="grayout">グレーアウト</option>
+          <option value="hide">非表示</option>
+        </select>
+      </label>
+    </div>
+    <div class="toolbar-group">
+      <label class="file-button">
+        📂 JSONを開く
+        <input type="file" id="viz-fileInput" accept="application/json">
+      </label>
+      <button id="viz-saveSvg">💾 SVG保存</button>
+      <button id="viz-savePng">💾 PNG保存</button>
+      <button id="viz-guideButton">ℹ️ ガイド</button>
+    </div>
+  </header>
+
+  <div id="viz-body">
+    <main id="viz-canvasWrap">
+      <div id="viz-dropZone">
+        <p>「📝 データ入力」タブでオーナー・店舗を登録すると、ここに自動的に表示されます。</p>
+        <p class="hint">JSONファイルをドラッグ&amp;ドロップ、または「JSONを開く」で外部データを読み込むこともできます。</p>
+      </div>
+      <svg id="viz-graph" xmlns="http://www.w3.org/2000/svg">
+        <g id="viz-viewport"></g>
+      </svg>
+      <div id="viz-tooltip" class="hidden"></div>
+      <div id="viz-hint-drag" class="canvas-hint">ノードはドラッグして位置を固定できます</div>
+    </main>
+
+    <aside id="viz-sidebar">
+      <section id="viz-selectionPanel" class="sidebar-section hidden">
+        <div class="sidebar-title">選択中のノード</div>
+        <div id="viz-selectionDetail"></div>
+        <div class="sidebar-subtitle">つながり</div>
+        <ul id="viz-selectionNeighbors"></ul>
+        <button id="viz-clearSelection" class="ghost-btn">選択を解除</button>
+      </section>
+
+      <section class="sidebar-section">
+        <div class="sidebar-title">凡例</div>
+        <div class="legend-item"><span class="legend-dot owner"></span>オーナー</div>
+        <div class="legend-item"><span class="legend-dot shop"></span>店舗</div>
+        <div class="legend-item"><span class="legend-line owner_shop"></span>owner_shop</div>
+        <div class="legend-item"><span class="legend-line same_building"></span>same_building</div>
+        <div class="legend-item"><span class="legend-line family"></span>family(破線)</div>
+        <div class="legend-item"><span class="legend-line business"></span>business(太線)</div>
+        <div class="legend-item"><span class="legend-line other"></span>other(点線)</div>
+      </section>
+
+      <section class="sidebar-section">
+        <div class="sidebar-title">統計</div>
+        <div class="stat-row">オーナー <b id="viz-statOwners">0</b></div>
+        <div class="stat-row">店舗 <b id="viz-statShops">0</b></div>
+        <div class="stat-row">関係 <b id="viz-statRelations">0</b></div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<div id="viz-guideModal" class="hidden">
+  <div class="modal-content">
+    <h2>操作ガイド</h2>
+    <ul>
+      <li>マウスホイール: ズーム(カーソル位置基準)</li>
+      <li>ドラッグ(背景): パン(画面移動)</li>
+      <li>ドラッグ(ノード): そのノードを移動して位置を固定</li>
+      <li>クリック(ノード): つながりをハイライトし、右側に詳細を表示</li>
+      <li>ダブルクリック(ノード): 中心に拡大表示</li>
+      <li>検索ボックス: 名前でノードを探して中心表示</li>
+      <li>エリア/グループの絞り込みは上部ツールバーから</li>
+    </ul>
+    <button id="viz-closeGuide">閉じる</button>
+  </div>
+</div>
+    </div>
+  </div>
+</div>
+
+<script src="editor.js"></script>
+<script src="visualizer.js"></script>
+<script>
+// アプリシェル: データ入力タブと相関図タブの切り替え、および
+// データ入力の内容を相関図タブに切り替えたときに自動反映するブリッジ。
+(() => {
+  const navButtons = document.querySelectorAll('.app-nav-btn');
+  const views = {
+    editor: document.getElementById('view-editor'),
+    visualizer: document.getElementById('view-visualizer'),
+  };
+  let currentView = null;
+
+  function switchTo(viewName) {
+    if (viewName === currentView) return;
+    currentView = viewName;
+    navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === viewName));
+    Object.entries(views).forEach(([name, el]) => el.classList.toggle('hidden', name !== viewName));
+
+    if (viewName === 'visualizer' && window.NetworkEditor && window.NetworkVisualizer) {
+      const payload = window.NetworkEditor.buildVisualizerPayload();
+      window.NetworkVisualizer.loadFromObject(payload);
+    }
+  }
+
+  navButtons.forEach(btn => {
+    btn.addEventListener('click', () => switchTo(btn.dataset.view));
+  });
+
+  switchTo('editor');
+})();
+
+</script>
+</body>
+</html>
