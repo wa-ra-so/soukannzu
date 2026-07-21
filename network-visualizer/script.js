@@ -246,6 +246,7 @@
         if (n.group) lines.push(`グループ: ${n.group}`);
         if (n.genre) lines.push(`ジャンル: ${n.genre}`);
         if (n.confidence) lines.push(`信頼度: ${n.confidence}`);
+        if (isSafeUrl(n.tabelog_url) || isSafeUrl(n.salesforce_url)) lines.push('（クリックでリンクを表示）');
         showTooltip(ev, lines.join('\n'));
       });
       g.addEventListener('mousemove', moveTooltip);
@@ -367,6 +368,10 @@
     });
   }
 
+  function isSafeUrl(url) {
+    return /^https?:\/\//i.test(url || '');
+  }
+
   function renderSelectionPanel(n) {
     selectionPanel.classList.remove('hidden');
     const lines = [`<div class="selection-name">${escapeHtml(n.label)}</div>`];
@@ -374,6 +379,10 @@
     if (n.group) lines.push(`<div class="selection-meta">グループ: ${escapeHtml(n.group)}</div>`);
     if (n.genre) lines.push(`<div class="selection-meta">ジャンル: ${escapeHtml(n.genre)}</div>`);
     if (n.confidence) lines.push(`<div class="selection-meta">信頼度: ${escapeHtml(n.confidence)}</div>`);
+    const links = [];
+    if (isSafeUrl(n.tabelog_url)) links.push(`<a class="selection-link" href="${escapeHtml(n.tabelog_url)}" target="_blank" rel="noopener noreferrer">食べログ ↗</a>`);
+    if (isSafeUrl(n.salesforce_url)) links.push(`<a class="selection-link" href="${escapeHtml(n.salesforce_url)}" target="_blank" rel="noopener noreferrer">Salesforce ↗</a>`);
+    if (links.length) lines.push(`<div class="selection-links">${links.join('')}</div>`);
     selectionDetail.innerHTML = lines.join('');
 
     selectionNeighbors.innerHTML = '';

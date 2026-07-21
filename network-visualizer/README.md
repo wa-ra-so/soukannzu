@@ -53,7 +53,8 @@ python -m http.server 8000
   "metadata": { "updated_at": "...", "area": "Chiba", "version": "1.0" },
   "nodes": [
     { "id": "owner_xxx", "label": "山田太郎", "node_type": "owner", "area": "市川", "group": "山田商事", "confidence": "sure" },
-    { "id": "shop_xxx",  "label": "ラーメンABC", "node_type": "shop", "area": "市川", "group": "山田商事", "genre": "ラーメン", "confidence": "sure" }
+    { "id": "shop_xxx",  "label": "ラーメンABC", "node_type": "shop", "area": "市川", "group": "山田商事", "genre": "ラーメン", "confidence": "sure",
+      "tabelog_url": "https://tabelog.com/...", "salesforce_url": "https://example.my.salesforce.com/..." }
   ],
   "edges": [
     { "from_id": "owner_xxx", "to_id": "shop_xxx", "type": "owner_shop", "confidence": "sure" },
@@ -63,7 +64,9 @@ python -m http.server 8000
 ```
 
 `node_type` は `owner`（緑）または `shop`（青）。
-`edges` の `type` によって線種を変えて表示しています（凡例参照）。
+`edges` の `type` によって線種と色を変えて表示しています（凡例参照）。
+店舗ノードに `tabelog_url` / `salesforce_url` があれば、そのノードを選択したときに
+右サイドパネルへ「食べログ ↗」「Salesforce ↗」のリンクとして表示されます（新しいタブで開きます）。
 
 | type | 線種 |
 |---|---|

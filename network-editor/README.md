@@ -6,6 +6,7 @@
 ## できること
 
 - オーナー・店舗・関係の追加・編集・削除（`manager.py` と同じCRUD）
+- 店舗ごとに食べログ・SalesforceのURLを登録し、テーブル上のリンクからワンクリックで開ける
 - `manager.py` の `validate()` と同じルールでの検証（重複ID・存在しない参照・自己参照・重複関係・必須項目・confidence/sourceの矛盾など）
 - 入力内容はブラウザの localStorage に自動保存（タブを閉じても消えません。ブラウザ/端末をまたぐ永続化はできません）
 - JSONの読み込み（`manager.py --action export` で出力した生データ形式）

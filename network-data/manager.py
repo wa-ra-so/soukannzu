@@ -393,6 +393,8 @@ class NetworkManager:
                 'area': s.get('area', ''),
                 'group': s.get('group', ''),
                 'confidence': s.get('confidence', ''),
+                'tabelog_url': s.get('tabelog_url', ''),
+                'salesforce_url': s.get('salesforce_url', ''),
             })
 
         edges = []
@@ -466,6 +468,7 @@ def build_parser():
     parser.add_argument('--owner', dest='owner_id')
     parser.add_argument('--address')
     parser.add_argument('--tabelog-url', dest='tabelog_url')
+    parser.add_argument('--salesforce-url', dest='salesforce_url')
     parser.add_argument('--source', default='manual')
     parser.add_argument('--confidence', default='sure')
     parser.add_argument('--from', dest='from_id')
@@ -491,7 +494,8 @@ def main():
         elif args.action == 'add_shop':
             shop_id = mgr.add_shop(args.name, args.area, args.owner_id, args.genre or '',
                                     args.group or '', args.address or '', args.source,
-                                    args.confidence, args.tabelog_url or '')
+                                    args.confidence, args.tabelog_url or '',
+                                    salesforce_url=args.salesforce_url or '')
             print(f'Added shop: {shop_id}')
 
         elif args.action == 'add_relation':
@@ -523,7 +527,7 @@ def main():
         elif args.action == 'update_shop':
             fields = dict(name=args.name, area=args.area, genre=args.genre, group=args.group,
                            address=args.address, owner_id=args.owner_id,
-                           tabelog_url=args.tabelog_url,
+                           tabelog_url=args.tabelog_url, salesforce_url=args.salesforce_url,
                            source=args.source if args.source != 'manual' else None,
                            confidence=args.confidence if args.confidence != 'sure' else None)
             shop = mgr.update_shop(args.id, **fields)

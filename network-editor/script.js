@@ -25,6 +25,7 @@ const FIELD_SPECS = {
     { key: 'group', label: 'グループ', type: 'text' },
     { key: 'address', label: '住所', type: 'text' },
     { key: 'tabelog_url', label: '食べログURL', type: 'text' },
+    { key: 'salesforce_url', label: 'SalesforceURL', type: 'text' },
     { key: 'source', label: 'ソース', type: 'select', options: VALID_SOURCES, default: 'manual' },
     { key: 'confidence', label: '信頼度', type: 'select', options: VALID_CONFIDENCE, default: 'sure' },
   ],
@@ -152,6 +153,7 @@ function addEntity(kind, values) {
       id: genId('shop'), name: values.name.trim(), genre: values.genre || '',
       owner_id: values.owner_id, area: values.area.trim(), group: values.group || '',
       address: values.address || '', tabelog_url: values.tabelog_url || '',
+      salesforce_url: values.salesforce_url || '',
       source: values.source || 'manual', confidence: values.confidence || 'sure',
     });
   } else if (kind === 'relation') {
@@ -175,7 +177,8 @@ function updateEntity(kind, id, values) {
     Object.assign(findEntity('shop', id), {
       name: values.name.trim(), genre: values.genre || '', owner_id: values.owner_id,
       area: values.area.trim(), group: values.group || '', address: values.address || '',
-      tabelog_url: values.tabelog_url || '', source: values.source || 'manual', confidence: values.confidence || 'sure',
+      tabelog_url: values.tabelog_url || '', salesforce_url: values.salesforce_url || '',
+      source: values.source || 'manual', confidence: values.confidence || 'sure',
     });
   } else if (kind === 'relation') {
     validateRelationInput(values, id);
@@ -465,6 +468,21 @@ function confidenceBadge(entity) {
   return `<span class="badge ${cls}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
 }
 
+function isSafeUrl(url) {
+  return /^https?:\/\//i.test(url || '');
+}
+
+function renderLinkBadges(shop) {
+  const badges = [];
+  if (shop.tabelog_url && isSafeUrl(shop.tabelog_url)) {
+    badges.push(`<a class="badge link-badge" href="${escapeHtml(shop.tabelog_url)}" target="_blank" rel="noopener noreferrer">食べログ ↗</a>`);
+  }
+  if (shop.salesforce_url && isSafeUrl(shop.salesforce_url)) {
+    badges.push(`<a class="badge link-badge" href="${escapeHtml(shop.salesforce_url)}" target="_blank" rel="noopener noreferrer">Salesforce ↗</a>`);
+  }
+  return badges.length ? badges.join(' ') : '<span class="badge-empty">-</span>';
+}
+
 function setEmptyState(kind, isEmpty) {
   document.getElementById('table-' + kind).closest('.table-wrap').classList.toggle('empty', isEmpty);
 }
@@ -521,6 +539,7 @@ function renderShopsTable() {
       <td>${owner ? escapeHtml(owner.name) : '<span class="badge warn-mismatch">不明</span>'}</td>
       <td>${escapeHtml(s.area)}</td>
       <td>${escapeHtml(s.group || '-')}</td>
+      <td>${renderLinkBadges(s)}</td>
       <td><span class="badge">${escapeHtml(s.source)}</span></td>
       <td>${confidenceBadge(s)}</td>
     `;
@@ -638,6 +657,7 @@ document.getElementById('exportVisualizerBtn').addEventListener('click', () => {
   }));
   data.shops.forEach(s => nodes.push({
     id: s.id, label: s.name, node_type: 'shop', genre: s.genre || '', area: s.area, group: s.group || '', confidence: s.confidence,
+    tabelog_url: s.tabelog_url || '', salesforce_url: s.salesforce_url || '',
   }));
   const edges = [];
   data.shops.forEach(s => edges.push({ from_id: s.owner_id, to_id: s.id, type: 'owner_shop', confidence: s.confidence }));
@@ -676,7 +696,7 @@ function buildSampleData() {
       { id: 'owner_7a210029', name: '中村六郎', area: '松戸', group: '', note: '', source: 'manual', confidence: 'sure' },
     ],
     shops: [
-      { id: 'shop_41f1b9eb', name: 'ラーメンABC', genre: 'ラーメン', owner_id: 'owner_86575258', area: '市川', group: '山田商事', address: '', tabelog_url: '', source: 'manual', confidence: 'sure' },
+      { id: 'shop_41f1b9eb', name: 'ラーメンABC', genre: 'ラーメン', owner_id: 'owner_86575258', area: '市川', group: '山田商事', address: '', tabelog_url: 'https://tabelog.com/chiba/A1203/A120301/12345678/', salesforce_url: 'https://example.my.salesforce.com/001XXXXXXXXXXXXXXX', source: 'manual', confidence: 'sure' },
       { id: 'shop_fd90925e', name: '焼肉やまだ', genre: '焼肉', owner_id: 'owner_86575258', area: '市川', group: '山田商事', address: '', tabelog_url: '', source: 'manual', confidence: 'sure' },
       { id: 'shop_0955d66f', name: 'カフェすずき', genre: 'カフェ', owner_id: 'owner_28633986', area: '市川', group: '山田商事', address: '', tabelog_url: '', source: 'manual', confidence: 'sure' },
       { id: 'shop_869f5674', name: '居酒屋たなか', genre: '居酒屋', owner_id: 'owner_cc517fe7', area: '船橋', group: '田中フーズ', address: '', tabelog_url: '', source: 'manual', confidence: 'sure' },

@@ -55,7 +55,8 @@ python manager.py --action stats
       "address": "千葉県市川市...",
       "source": "manual | web | lcdb",
       "confidence": "sure | medium | low",
-      "tabelog_url": "https://..."
+      "tabelog_url": "https://...",
+      "salesforce_url": "https://...salesforce.com/..."
     }
   ],
   "relations": [
@@ -84,7 +85,8 @@ python manager.py --action add_owner --name "山田太郎" --area "市川" --gro
 # 店舗追加（owner が存在しないと拒否される）
 python manager.py --action add_shop --name "ラーメンABC" --genre "ラーメン" \
     --owner "owner_a1b2c3d4" --area "市川" --group "山田商事" \
-    --address "千葉県市川市..." --tabelog-url "https://tabelog.com/..."
+    --address "千葉県市川市..." --tabelog-url "https://tabelog.com/..." \
+    --salesforce-url "https://example.my.salesforce.com/001..."
 
 # 関係追加（重複・自己参照・存在しないIDは拒否される）
 python manager.py --action add_relation --from "owner_a1b2c3d4" --to "owner_e5f6g7h8" \
@@ -214,6 +216,7 @@ python manager.py --action export --output data/network.json
 | 法人番号公表サイト（国税庁） | `houjin_bangou_api.py` で商号照会（公式API・自動照会OK） | 照会結果を確認後、`update_owner`/`update_shop` で手動反映 |
 | ニュース記事 | 自分で記事を読み、URLと概要を `note` に手入力 | `add_owner --note "2026年6月 千葉日報で開店記事あり" --source web --confidence medium` |
 | 食べログ | 自分で確認したページのURLを `tabelog_url` に登録 | `add_shop --tabelog-url "https://tabelog.com/..." --source web --confidence medium` |
+| Salesforce | 対応する取引先/商談のURLを `salesforce_url` に登録 | `add_shop --salesforce-url "https://example.my.salesforce.com/001..."` |
 | 商工会・業界団体リスト | 手動入力 | `add_owner --source manual --confidence sure` |
 
 ### 法人番号照会（houjin_bangou_api.py）

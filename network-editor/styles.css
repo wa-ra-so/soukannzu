@@ -238,6 +238,16 @@ tbody tr:hover { background: var(--accent-soft); }
 .badge.confidence-low { color: var(--danger); border-color: var(--danger); }
 .badge.warn-mismatch { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
 
+a.badge.link-badge {
+  color: var(--accent);
+  border-color: var(--accent);
+  text-decoration: none;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+a.badge.link-badge:hover { background: var(--accent-soft); }
+.badge-empty { color: var(--text-muted); }
+
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .row-actions button {
   padding: 4px 8px;

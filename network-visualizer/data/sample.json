@@ -76,7 +76,9 @@
       "genre": "ラーメン",
       "area": "市川",
       "group": "山田商事",
-      "confidence": "sure"
+      "confidence": "sure",
+      "tabelog_url": "https://tabelog.com/chiba/A1203/A120301/12345678/",
+      "salesforce_url": "https://example.my.salesforce.com/001XXXXXXXXXXXXXXX"
     },
     {
       "id": "shop_fd90925e",
