@@ -12,7 +12,7 @@
 | `index.html` | データ入力・相関図の統合ツール本体（上部タブで切り替え） |
 | `styles.css` | 共有デザイントークン + 各ビューのスタイル |
 | `editor.js` | データ入力ビューのロジック（CRUD・検証・localStorage自動保存） |
-| `visualizer.js` | 相関図ビューのロジック（ズーム・パン・検索・ドラッグ固定） |
+| `visualizer.js` | 相関図ビューのロジック（ズーム・パン・検索・自由配置＋位置保存・背景色分け） |
 | `network-data/` | Python CLI（`manager.py`）。自動化・一括登録・法人番号照会向け |
 | `network-editor/` | データ入力ページ単体版（統合前の個別ツール、引き続き利用可） |
 | `network-visualizer/` | 相関図表示ツール単体版（同上） |
