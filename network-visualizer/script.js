@@ -695,10 +695,10 @@
       .node text { font-size: 11px; font-family: sans-serif; }
       .edge { stroke: #9aa3af; fill: none; }
       .edge.owner_shop { stroke-width: 1; }
-      .edge.same_building { stroke-width: 2; }
-      .edge.family { stroke-width: 1.5; stroke-dasharray: 6 4; }
-      .edge.business { stroke-width: 3; }
-      .edge.other { stroke-width: 1.5; stroke-dasharray: 2 3; }
+      .edge.same_building { stroke: #eb6834; stroke-width: 2.5; }
+      .edge.family { stroke: #1baf7a; stroke-width: 2; stroke-dasharray: 7 4; }
+      .edge.business { stroke: #eda100; stroke-width: 3.5; }
+      .edge.other { stroke: #e87ba4; stroke-width: 2; stroke-dasharray: 1 4; stroke-linecap: round; }
     `;
     clone.insertBefore(style, clone.firstChild);
     return clone;
