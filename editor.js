@@ -6,6 +6,12 @@
 const VALID_SOURCES = ['manual', 'web', 'lcdb'];
 const VALID_CONFIDENCE = ['sure', 'medium', 'low'];
 const VALID_RELATION_TYPES = ['same_building', 'family', 'business', 'other'];
+const RELATION_TYPE_LABELS = {
+  same_building: '同じ建物',
+  family: '家族',
+  business: '取引',
+  other: 'その他',
+};
 const STORAGE_KEY = 'network-editor-data-v1';
 
 const FIELD_SPECS = {
@@ -33,7 +39,7 @@ const FIELD_SPECS = {
   relation: [
     { key: 'from_id', label: 'From', type: 'node-select', required: true },
     { key: 'to_id', label: 'To', type: 'node-select', required: true },
-    { key: 'type', label: '関係タイプ', type: 'select', options: VALID_RELATION_TYPES, required: true },
+    { key: 'type', label: '関係タイプ', type: 'select', options: VALID_RELATION_TYPES, labels: RELATION_TYPE_LABELS, required: true },
     { key: 'note', label: 'メモ', type: 'textarea' },
     { key: 'source', label: 'ソース', type: 'select', options: ['manual', 'web'], default: 'manual' },
     { key: 'confidence', label: '信頼度', type: 'select', options: VALID_CONFIDENCE, default: 'sure' },
@@ -323,7 +329,7 @@ function renderForm(specs, values) {
       spec.options.forEach(opt => {
         const o = document.createElement('option');
         o.value = opt;
-        o.textContent = opt;
+        o.textContent = (spec.labels && spec.labels[opt]) || opt;
         input.appendChild(o);
       });
     } else if (spec.type === 'owner-select') {

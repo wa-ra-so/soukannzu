@@ -7,6 +7,12 @@
 
 (() => {
   const RELATION_TYPES = ['same_building', 'family', 'business', 'other'];
+  const RELATION_TYPE_LABELS = {
+    same_building: '同じ建物',
+    family: '家族',
+    business: '取引',
+    other: 'その他',
+  };
   const SOURCE_OPTIONS = ['manual', 'web', 'lcdb'];
   const CONFIDENCE_OPTIONS = ['sure', 'medium', 'low'];
 
@@ -652,7 +658,7 @@
       spec.options.forEach(opt => {
         const o = document.createElement('option');
         o.value = opt;
-        o.textContent = opt;
+        o.textContent = (spec.labels && spec.labels[opt]) || opt;
         input.appendChild(o);
       });
     } else if (spec.type === 'textarea') {
@@ -779,7 +785,7 @@
     const typeLabel = document.createElement('label');
     typeLabel.textContent = '関係タイプ';
     typeWrap.appendChild(typeLabel);
-    const typeSelect = buildFieldInput({ type: 'select', options: RELATION_TYPES }, e.type);
+    const typeSelect = buildFieldInput({ type: 'select', options: RELATION_TYPES, labels: RELATION_TYPE_LABELS }, e.type);
     typeWrap.appendChild(typeSelect);
     form.appendChild(typeWrap);
 
@@ -947,7 +953,7 @@
     RELATION_TYPES.forEach(t => {
       const o = document.createElement('option');
       o.value = t;
-      o.textContent = t;
+      o.textContent = RELATION_TYPE_LABELS[t] || t;
       typeSelect.appendChild(o);
     });
     document.getElementById('viz-relationNote').value = '';
