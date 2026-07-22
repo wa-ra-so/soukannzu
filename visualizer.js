@@ -101,6 +101,11 @@
     return !!window.NetworkEditor;
   }
 
+  function nodeRadius(n) {
+    const nodeSize = n.node_type === 'owner' && Number.isFinite(n.node_size) ? n.node_size : 1;
+    return (n.node_type === 'owner' ? 10 : 7) * nodeSize;
+  }
+
   // ------------------------------------------------------------------
   // データ読み込み・自由配置（新規ノードはグループ単位でクラスタ配置）
   // ------------------------------------------------------------------
@@ -284,8 +289,7 @@
       g.setAttribute('id', `node_${n.id}`);
       g.setAttribute('transform', `translate(${n.x}, ${n.y})`);
 
-      const nodeSize = n.node_type === 'owner' && Number.isFinite(n.node_size) ? n.node_size : 1;
-      const radius = (n.node_type === 'owner' ? 10 : 7) * nodeSize;
+      const radius = nodeRadius(n);
 
       const hitArea = document.createElementNS(SVG_NS, 'circle');
       hitArea.setAttribute('r', Math.max(16, radius + 6));
@@ -1197,6 +1201,25 @@
     applyTransform();
   });
 
+  // ドラッグしたノードを別のノードに重ねて離すと、関係作成モーダルを開く
+  // （「関係をつなぐ」モードに切り替えなくても直感的に関係を作れるようにするための近道）
+  function findOverlapTarget(n) {
+    let best = null;
+    let bestDist = Infinity;
+    state.nodes.forEach(other => {
+      if (other.id === n.id || !isNodeVisible(other)) return;
+      const dx = other.x - n.x;
+      const dy = other.y - n.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const threshold = (nodeRadius(n) + nodeRadius(other)) * 0.7;
+      if (dist < threshold && dist < bestDist) {
+        best = other;
+        bestDist = dist;
+      }
+    });
+    return best;
+  }
+
   window.addEventListener('mouseup', () => {
     if (draggingNode) {
       const g = nodeElements.get(draggingNode.id);
@@ -1208,6 +1231,10 @@
         if (hasEditorBridge()) {
           window.NetworkEditor.setNodePosition(draggingNode.id, draggingNode.pos_x, draggingNode.pos_y);
           window.NetworkEditor.renderAll();
+        }
+        const overlapTarget = findOverlapTarget(draggingNode);
+        if (overlapTarget) {
+          openCreateRelationModal(draggingNode.id, overlapTarget.id);
         }
       }
       draggingNode = null;
