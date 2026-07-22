@@ -1121,6 +1121,12 @@ display: none;
   pointer-events: none;
 }
 
+#view-visualizer .node.connect-target circle:not(.hit-area) {
+  stroke: var(--accent);
+  stroke-width: 4;
+  filter: drop-shadow(0 0 5px var(--accent));
+}
+
 #view-visualizer #viz-connectMode.active {
   background: var(--accent-soft);
   border-color: var(--accent);

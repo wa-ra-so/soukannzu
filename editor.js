@@ -53,6 +53,22 @@ let data = loadFromStorage() || initData();
 let currentKind = null;
 let currentEditId = null;
 
+const UNDO_LIMIT = 50;
+let undoStack = [];
+
+function pushUndoSnapshot() {
+  undoStack.push(JSON.stringify(data));
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+}
+
+function undo() {
+  const prev = undoStack.pop();
+  if (!prev) return false;
+  data = JSON.parse(prev);
+  saveToStorage();
+  return true;
+}
+
 function initData() {
   return {
     metadata: { updated_at: new Date().toISOString(), area: 'Chiba', version: '1.0' },
@@ -155,6 +171,7 @@ function parseNodeSize(value) {
 function addEntity(kind, values) {
   if (kind === 'owner') {
     validateOwnerInput(values);
+    pushUndoSnapshot();
     data.owners.push({
       id: genId('owner'), name: values.name.trim(), area: values.area.trim(),
       group: values.group || '', note: values.note || '', node_size: parseNodeSize(values.node_size),
@@ -162,6 +179,7 @@ function addEntity(kind, values) {
     });
   } else if (kind === 'shop') {
     validateShopInput(values);
+    pushUndoSnapshot();
     data.shops.push({
       id: genId('shop'), name: values.name.trim(), genre: values.genre || '',
       owner_id: values.owner_id, area: values.area.trim(), group: values.group || '',
@@ -171,6 +189,7 @@ function addEntity(kind, values) {
     });
   } else if (kind === 'relation') {
     validateRelationInput(values, null);
+    pushUndoSnapshot();
     data.relations.push({
       id: genId('rel'), from_id: values.from_id, to_id: values.to_id, type: values.type,
       note: values.note || '', source: values.source || 'manual', confidence: values.confidence || 'sure',
@@ -181,6 +200,7 @@ function addEntity(kind, values) {
 function updateEntity(kind, id, values) {
   if (kind === 'owner') {
     validateOwnerInput(values);
+    pushUndoSnapshot();
     Object.assign(findEntity('owner', id), {
       name: values.name.trim(), area: values.area.trim(), group: values.group || '',
       note: values.note || '', node_size: parseNodeSize(values.node_size),
@@ -188,6 +208,7 @@ function updateEntity(kind, id, values) {
     });
   } else if (kind === 'shop') {
     validateShopInput(values);
+    pushUndoSnapshot();
     Object.assign(findEntity('shop', id), {
       name: values.name.trim(), genre: values.genre || '', owner_id: values.owner_id,
       area: values.area.trim(), group: values.group || '', address: values.address || '',
@@ -196,6 +217,7 @@ function updateEntity(kind, id, values) {
     });
   } else if (kind === 'relation') {
     validateRelationInput(values, id);
+    pushUndoSnapshot();
     Object.assign(findEntity('relation', id), {
       from_id: values.from_id, to_id: values.to_id, type: values.type,
       note: values.note || '', source: values.source || 'manual', confidence: values.confidence || 'sure',
@@ -208,8 +230,9 @@ function deleteOwner(id) {
   if (dependentShops.length) {
     const ok = confirm(`このオーナーには${dependentShops.length}件の店舗が紐づいています。店舗と関連する関係もまとめて削除しますか？`);
     if (!ok) return false;
-    dependentShops.forEach(s => removeShopCascade(s.id));
   }
+  pushUndoSnapshot();
+  dependentShops.forEach(s => removeShopCascade(s.id));
   data.relations = data.relations.filter(r => r.from_id !== id && r.to_id !== id);
   data.owners = data.owners.filter(o => o.id !== id);
   return true;
@@ -223,6 +246,7 @@ function removeShopCascade(id) {
 function deleteShop(id) {
   const ok = confirm('この店舗を削除しますか？関連する関係も削除されます。');
   if (!ok) return false;
+  pushUndoSnapshot();
   removeShopCascade(id);
   return true;
 }
@@ -230,6 +254,7 @@ function deleteShop(id) {
 function deleteRelation(id) {
   const ok = confirm('この関係を削除しますか？');
   if (!ok) return false;
+  pushUndoSnapshot();
   data.relations = data.relations.filter(r => r.id !== id);
   return true;
 }
@@ -654,6 +679,7 @@ document.getElementById('ed-fileInput').addEventListener('change', e => {
       if (!Array.isArray(parsed.owners) || !Array.isArray(parsed.shops) || !Array.isArray(parsed.relations)) {
         throw new Error('owners / shops / relations 形式のJSON（manager.pyの生データ形式）を指定してください');
       }
+      pushUndoSnapshot();
       data = parsed;
       saveToStorage();
       renderAll();
@@ -700,6 +726,16 @@ document.getElementById('ed-exportVisualizerBtn').addEventListener('click', () =
 function setNodePosition(id, x, y) {
   const node = findNodeById(id);
   if (!node) return;
+  pushUndoSnapshot();
+  node.pos_x = x;
+  node.pos_y = y;
+  saveToStorage();
+}
+
+// 初回表示時の自動クラスタ配置など、ユーザー操作によらない位置設定用（undo履歴を汚さない）
+function setNodePositionSilent(id, x, y) {
+  const node = findNodeById(id);
+  if (!node) return;
   node.pos_x = x;
   node.pos_y = y;
   saveToStorage();
@@ -716,8 +752,10 @@ window.NetworkEditor = {
   findEntity,
   findNodeById,
   setNodePosition,
+  setNodePositionSilent,
   saveToStorage,
   renderAll,
+  undo,
   VALID_SOURCES,
   VALID_CONFIDENCE,
   VALID_RELATION_TYPES,
@@ -725,6 +763,7 @@ window.NetworkEditor = {
 
 document.getElementById('ed-clearBtn').addEventListener('click', () => {
   if (!confirm('すべてのデータを消去します。よろしいですか？')) return;
+  pushUndoSnapshot();
   data = initData();
   saveToStorage();
   renderAll();
@@ -734,6 +773,7 @@ document.getElementById('ed-sampleBtn').addEventListener('click', () => {
   if (data.owners.length || data.shops.length || data.relations.length) {
     if (!confirm('現在のデータを上書きしてサンプルを読み込みます。よろしいですか？')) return;
   }
+  pushUndoSnapshot();
   data = buildSampleData();
   saveToStorage();
   renderAll();

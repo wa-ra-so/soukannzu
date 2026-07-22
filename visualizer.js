@@ -186,7 +186,7 @@
       n.pos_y = center.y + offset.y;
       n.x = n.pos_x;
       n.y = n.pos_y;
-      if (hasEditorBridge()) window.NetworkEditor.setNodePosition(n.id, n.pos_x, n.pos_y);
+      if (hasEditorBridge()) window.NetworkEditor.setNodePositionSilent(n.id, n.pos_x, n.pos_y);
     });
   }
 
@@ -1151,6 +1151,48 @@
     zoomAt(ev.clientX, ev.clientY, factor);
   }, { passive: false });
 
+  // スマホでのピンチズーム（2本指の間隔の変化に応じて拡大縮小）
+  const activeTouches = new Map();
+  let pinchStartDist = null;
+
+  function touchDistance(pts) {
+    const dx = pts[1].x - pts[0].x;
+    const dy = pts[1].y - pts[0].y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  svg.addEventListener('pointerdown', ev => {
+    if (ev.pointerType !== 'touch') return;
+    activeTouches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (activeTouches.size === 2) {
+      pinchStartDist = touchDistance(Array.from(activeTouches.values()));
+    }
+  });
+
+  svg.addEventListener('pointermove', ev => {
+    if (ev.pointerType !== 'touch' || !activeTouches.has(ev.pointerId)) return;
+    activeTouches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (activeTouches.size === 2 && pinchStartDist) {
+      ev.preventDefault();
+      const pts = Array.from(activeTouches.values());
+      const dist = touchDistance(pts);
+      const factor = dist / pinchStartDist;
+      const midX = (pts[0].x + pts[1].x) / 2;
+      const midY = (pts[0].y + pts[1].y) / 2;
+      zoomAt(midX, midY, factor);
+      pinchStartDist = dist;
+    }
+  });
+
+  function clearTouch(ev) {
+    if (ev.pointerType !== 'touch') return;
+    activeTouches.delete(ev.pointerId);
+    if (activeTouches.size < 2) pinchStartDist = null;
+  }
+  svg.addEventListener('pointerup', clearTouch);
+  svg.addEventListener('pointercancel', clearTouch);
+  svg.addEventListener('pointerleave', clearTouch);
+
   document.getElementById('viz-zoomIn').addEventListener('click', () => {
     const rect = svg.getBoundingClientRect();
     zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.1);
@@ -1183,6 +1225,8 @@
       if (g) g.setAttribute('transform', `translate(${draggingNode.x}, ${draggingNode.y})`);
       updateEdgePositionsForNode(draggingNode.id);
       renderRegionBoxes();
+      const overlapTarget = findOverlapTarget(draggingNode);
+      setOverlapHighlight(overlapTarget ? overlapTarget.id : null);
       return;
     }
 
@@ -1220,6 +1264,20 @@
     return best;
   }
 
+  let overlapHighlightId = null;
+  function setOverlapHighlight(id) {
+    if (overlapHighlightId === id) return;
+    if (overlapHighlightId) {
+      const prevG = nodeElements.get(overlapHighlightId);
+      if (prevG) prevG.classList.remove('connect-target');
+    }
+    overlapHighlightId = id;
+    if (id) {
+      const g = nodeElements.get(id);
+      if (g) g.classList.add('connect-target');
+    }
+  }
+
   window.addEventListener('mouseup', () => {
     if (draggingNode) {
       const g = nodeElements.get(draggingNode.id);
@@ -1233,6 +1291,7 @@
           window.NetworkEditor.renderAll();
         }
         const overlapTarget = findOverlapTarget(draggingNode);
+        setOverlapHighlight(null);
         if (overlapTarget) {
           openCreateRelationModal(draggingNode.id, overlapTarget.id);
         }
