@@ -6,8 +6,10 @@
 
 ```
 network-data/
-├── manager.py               # CLIスクリプト本体
-├── houjin_bangou_api.py     # 国税庁 法人番号公表サイトへの照会補助（照会のみ）
+├── manager.py                                   # CLIスクリプト本体
+├── houjin_bangou_api.py                         # 法人番号Web-APIへの照会補助（要アプリケーションID・照会のみ）
+├── houjin_bangou_csv.py                         # 法人番号「全件データCSV」読み込みモジュール（申請不要）
+├── suggest_relations_by_corporate_number.py     # 同一法人のオーナー/店舗を検出し関係作成を提案
 ├── data/
 │   └── network.json         # 保存先データ（初期状態は空）
 └── README.md
@@ -213,43 +215,62 @@ python manager.py --action export --output data/network.json
 
 | 情報源 | 方法 | 登録コマンド例 |
 |---|---|---|
-| 法人番号公表サイト（国税庁） | `houjin_bangou_api.py` で商号照会（公式API・自動照会OK） | 照会結果を確認後、`update_owner`/`update_shop` で手動反映 |
+| 法人番号公表サイト（国税庁） | 全件データCSV（申請不要・推奨）または`houjin_bangou_api.py`で商号照会 | 照会結果を確認後、`update_owner`/`update_shop` で手動反映 |
 | ニュース記事 | 自分で記事を読み、URLと概要を `note` に手入力 | `add_owner --note "2026年6月 千葉日報で開店記事あり" --source web --confidence medium` |
 | 食べログ | 自分で確認したページのURLを `tabelog_url` に登録 | `add_shop --tabelog-url "https://tabelog.com/..." --source web --confidence medium` |
 | Salesforce | 対応する取引先/商談のURLを `salesforce_url` に登録 | `add_shop --salesforce-url "https://example.my.salesforce.com/001..."` |
 | 商工会・業界団体リスト | 手動入力 | `add_owner --source manual --confidence sure` |
 
-### 法人番号照会（houjin_bangou_api.py）
+### 法人番号照会 - 2つの方法
+
+法人番号公表サイトのデータは、2通りの方法で取得できる。**申請不要ですぐ使えるCSV方式を推奨**する。
+
+| 方法 | 申請 | 反映までの時間 | 用途 |
+|---|---|---|---|
+| **全件データCSV（推奨）** | 不要 | 即時 | `suggest_relations_by_corporate_number.py --csv-file` |
+| Web-API | 必要 | アプリケーションID発行に1〜1.5ヶ月ほど | `houjin_bangou_api.py` / `suggest_relations_by_corporate_number.py --api-key` |
+
+いずれの方法でも取得できるのは商号・法人番号・本店所在地のみで、**代表者名は含まれません**。
+そのため「代表者名から複数企業を自動検出する」ことはできません。
+同一代表者が複数の法人を持っていることに気づいた場合は、`add_relation --type business` で
+手動で関連付けてください。結果は表示されるだけで、どちらの方法でも `network.json` への
+自動書き込みは行いません。
+
+#### 全件データCSV（推奨・申請不要）
+
+1. https://www.houjin-bangou.nta.go.jp/download/zenken/ から対象の都道府県（例: 千葉県）のCSVを
+   ダウンロードする（アプリケーションID等の申請は不要）
+2. `suggest_relations_by_corporate_number.py --csv-file` にダウンロードしたCSVのパスを渡す
 
 ```bash
-# APIキー（アプリケーションID）は https://www.houjin-bangou.nta.go.jp/webapi/riyou/ から無料で取得
+python suggest_relations_by_corporate_number.py --csv-file /path/to/12_chiba_all_YYYYMMDD.csv
+```
+
+CSVはヘッダー行なしの固定列形式（列1=法人番号、列6=商号、列9〜11=都道府県/市区町村/番地）。
+文字コードはUTF-8/Shift-JISのどちらでも自動判別する。
+
+#### Web-API（houjin_bangou_api.py）
+
+```bash
+# アプリケーションIDは https://www.houjin-bangou.nta.go.jp/webapi/index.html から無料で発行できるが、
+# 発行手続きに1〜1.5ヶ月ほどかかることがある
 export HOUJIN_BANGOU_API_KEY="取得したアプリケーションID"
 
 python houjin_bangou_api.py --name "山田商事"
+python suggest_relations_by_corporate_number.py --api-key "$HOUJIN_BANGOU_API_KEY"
 ```
-
-このAPIで取得できるのは商号・法人番号・本店所在地のみで、**代表者名は含まれません**。
-そのため「代表者名から複数企業を自動検出する」機能は実現できません。
-同一代表者が複数の法人を持っていることに気づいた場合は、
-`add_relation --type business` で手動で関連付けてください。
-
-結果は表示されるだけで `network.json` へは自動反映されません。
-内容を目視で確認したうえで `update_owner` / `update_shop` を使って反映してください。
 
 ### 法人番号による関係の自動提案（suggest_relations_by_corporate_number.py）
 
 オーナー/店舗の `group`（グループ）欄を会社名とみなして法人番号を照会し、
 **同じ法人番号に複数のオーナー/店舗が紐づいている場合に、関係の追加を提案**します。
-「山田商事」と「(株)山田商事」のような表記ゆれがあっても、法人番号が一致すれば検出できます。
-
-```bash
-export HOUJIN_BANGOU_API_KEY="取得したアプリケーションID"
-python suggest_relations_by_corporate_number.py
-```
+「山田商事株式会社」の表記が完全に一致していれば検出できますが、「山田商事」のような
+省略形は同名の別法人が複数存在することが多く、**法人番号が一意に決まらない場合は
+誤検出を避けるため提案をスキップし、警告を表示します**（正式名称での登録を推奨）。
 
 - 提案を表示するだけで、`network.json` への自動書き込みは行いません
 - 表示された `add_relation` コマンドを確認したうえで、必要なものだけ手動実行してください
-- 代表者名はAPIで取得できないため、**異なる会社名の間で同一オーナーを検出することはできません**
+- 代表者名はどちらの方法でも取得できないため、**異なる会社名の間で同一オーナーを検出することはできません**
   （あくまで「同じ法人番号」という一致のみを検出します）
 
 ### 食べログ・Googleの口コミからの自動集約について

@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""法人番号公表サイトWeb-APIを使い、同じ法人番号を持つオーナー/店舗を検出して関係作成を提案する
+"""法人番号データで、同じ法人番号を持つオーナー/店舗を検出して関係作成を提案する
 
-- houjin_bangou_api.py の商号照会（公式API・無料）を使うだけで、スクレイピングは行わない
-- オーナー/店舗の「グループ」欄を会社名とみなして照会する
-  （代表者名はこのAPIでは取得できないため、あくまで「同じ会社に属していそうか」の検出に留まる）
-- 結果は提示するだけで、network.json への自動書き込みは行わない
-  提案されたコマンドを確認したうえで manager.py --action add_relation で手動反映すること
+2つの照会方法に対応する（どちらも公式データのみ使用し、スクレイピングは行わない）:
+  --csv-file  国税庁「全件データ」CSV（申請不要・即時ダウンロード可）を使ったオフライン照会
+              https://www.houjin-bangou.nta.go.jp/download/zenken/ から都道府県別に取得
+  --api-key   法人番号Web-APIを使ったオンライン照会（アプリケーションIDの発行に1〜1.5ヶ月ほど要する）
+
+オーナー/店舗の「グループ」欄を会社名とみなして照会する
+（代表者名はどちらの方法でも取得できないため、あくまで「同じ会社に属していそうか」の検出に留まる）
+結果は提示するだけで、network.json への自動書き込みは行わない。
+提案されたコマンドを確認したうえで manager.py --action add_relation で手動反映すること。
 """
 
 import argparse
@@ -15,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from houjin_bangou_api import search_by_company_name
+from houjin_bangou_csv import load_corporate_index, search_offline
 
 
 def load_network(data_file):
@@ -41,42 +45,40 @@ def collect_grouped_entities(data):
     return entities
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--data-file', default='data/network.json', help='network.jsonのパス')
-    parser.add_argument(
-        '--api-key',
-        default=os.environ.get('HOUJIN_BANGOU_API_KEY'),
-        help='法人番号Web-APIのアプリケーションID（環境変数 HOUJIN_BANGOU_API_KEY でも指定可）',
-    )
-    args = parser.parse_args()
+def resolve_group(group, lookup_cache, resolver):
+    """groupの照会結果をキャッシュしつつ返す。
 
-    if not args.api_key:
+    候補が複数の異なる法人番号にまたがる場合は曖昧と判断し None を返す（誤検出防止）。
+    """
+    if group in lookup_cache:
+        return lookup_cache[group]
+    try:
+        results = resolver(group)
+    except Exception as e:
+        print(f'[警告] "{group}" の照会に失敗しました: {e}', file=sys.stderr)
+        lookup_cache[group] = None
+        return None
+    distinct_numbers = {r['corporateNumber'] for r in results}
+    if len(distinct_numbers) == 0:
+        corp = None
+    elif len(distinct_numbers) == 1:
+        corp = results[0]
+    else:
         print(
-            'エラー: APIキー（アプリケーションID）が指定されていません。\n'
-            '取得方法: https://www.houjin-bangou.nta.go.jp/webapi/riyou/ から利用申請してください（無料）。',
+            f'[注意] "{group}" は複数の異なる法人に一致したため、あいまいと判断してスキップしました '
+            f'（{len(distinct_numbers)}件: {", ".join(sorted(distinct_numbers))}）',
             file=sys.stderr,
         )
-        sys.exit(1)
+        corp = None
+    lookup_cache[group] = corp
+    return corp
 
-    data = load_network(args.data_file)
-    entities = collect_grouped_entities(data)
-    if not entities:
-        print('「グループ」欄が設定されているオーナー/店舗が見つかりませんでした。')
-        return
 
+def build_suggestions(data, entities, resolver):
     by_corporate_number = {}
     lookup_cache = {}
     for kind, entity_id, name, group in entities:
-        if group not in lookup_cache:
-            try:
-                results = search_by_company_name(group, args.api_key, mode='1')
-            except Exception as e:
-                print(f'[警告] "{group}" の照会に失敗しました: {e}', file=sys.stderr)
-                lookup_cache[group] = None
-                continue
-            lookup_cache[group] = results[0] if results else None
-        corp = lookup_cache[group]
+        corp = resolve_group(group, lookup_cache, resolver)
         if not corp:
             continue
         corporate_number = corp.get('corporateNumber')
@@ -94,11 +96,13 @@ def main():
                 if already_related(data, a[1], b[1]):
                     continue
                 suggestions.append((info['company'], corporate_number, a, b))
+    return suggestions
 
+
+def print_suggestions(suggestions):
     if not suggestions:
         print('新たに提案できる関係は見つかりませんでした（法人番号の一致なし、または既に登録済み）。')
         return
-
     print(f'{len(suggestions)}件の関係を提案します（法人番号が一致し、未登録のペア）。\n')
     for company, corporate_number, a, b in suggestions:
         a_kind, a_id, a_name, a_group = a
@@ -110,6 +114,50 @@ def main():
             f'--from {a_id} --to {b_id} --type business '
             f'--note "法人番号照会により検出: {company} ({corporate_number})"\n'
         )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--data-file', default='data/network.json', help='network.jsonのパス')
+    parser.add_argument(
+        '--csv-file',
+        help='国税庁「全件データ」CSVのパス（申請不要。指定時はこちらを優先し--api-keyは無視される）',
+    )
+    parser.add_argument(
+        '--api-key',
+        default=os.environ.get('HOUJIN_BANGOU_API_KEY'),
+        help='法人番号Web-APIのアプリケーションID（環境変数 HOUJIN_BANGOU_API_KEY でも指定可）。--csv-file未指定時のみ使用',
+    )
+    args = parser.parse_args()
+
+    if not args.csv_file and not args.api_key:
+        print(
+            'エラー: --csv-file または --api-key のどちらかを指定してください。\n'
+            '  --csv-file: https://www.houjin-bangou.nta.go.jp/download/zenken/ から'
+            '都道府県別CSVを申請不要でダウンロードして指定（推奨・即時利用可）\n'
+            '  --api-key : https://www.houjin-bangou.nta.go.jp/webapi/index.html '
+            '（アプリケーションID発行に1〜1.5ヶ月ほど要する）',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if args.csv_file:
+        print(f'{args.csv_file} を読み込み中...', file=sys.stderr)
+        index = load_corporate_index(args.csv_file)
+        print(f'{len(index)}件の法人名を読み込みました。', file=sys.stderr)
+        resolver = lambda name: search_offline(index, name)
+    else:
+        from houjin_bangou_api import search_by_company_name
+        resolver = lambda name: search_by_company_name(name, args.api_key, mode='1')
+
+    data = load_network(args.data_file)
+    entities = collect_grouped_entities(data)
+    if not entities:
+        print('「グループ」欄が設定されているオーナー/店舗が見つかりませんでした。')
+        return
+
+    suggestions = build_suggestions(data, entities, resolver)
+    print_suggestions(suggestions)
 
 
 if __name__ == '__main__':

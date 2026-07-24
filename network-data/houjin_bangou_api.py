@@ -10,7 +10,9 @@
   使って手動で反映すること。
 
 APIキー（アプリケーションID）の取得:
-  https://www.houjin-bangou.nta.go.jp/webapi/riyou/ から無料で利用申請できる。
+  https://www.houjin-bangou.nta.go.jp/webapi/index.html から無料で発行できるが、
+  発行手続きに1〜1.5ヶ月ほどかかることがある。すぐに使いたい場合は houjin_bangou_csv.py
+  （申請不要・即時ダウンロード可能な全件データCSVを使うオフライン照会）を利用すること。
 """
 
 import argparse
@@ -74,7 +76,9 @@ def main():
     if not args.api_key:
         print(
             'エラー: APIキー（アプリケーションID）が指定されていません。\n'
-            '取得方法: https://www.houjin-bangou.nta.go.jp/webapi/riyou/ から利用申請してください（無料）。\n'
+            '取得方法: https://www.houjin-bangou.nta.go.jp/webapi/index.html から無料で発行できますが、\n'
+            '発行手続きに1〜1.5ヶ月ほどかかることがあります。すぐに使いたい場合は houjin_bangou_csv.py '
+            '（申請不要の全件データCSVを使うオフライン照会）を利用してください。\n'
             '取得後は --api-key オプション、または環境変数 HOUJIN_BANGOU_API_KEY で指定できます。',
             file=sys.stderr,
         )
